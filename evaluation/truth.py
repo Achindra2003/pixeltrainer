@@ -92,3 +92,18 @@ def tilemap(pyboy):
     """The 20x18 screen tile buffer (wTileMap) as a list of rows. Text tiles here label OCR truth."""
     a = _addr(pyboy, "wTileMap")
     return [[pyboy.memory[a + 20 * r + c] for c in range(20)] for r in range(18)]
+
+
+def sprite_cells(t):
+    """Cells overlapped by any on-screen sprite. screen_y is the drawn top, 4 px above the sprite's cell,
+    so a sprite also covers the bottom of the cell above."""
+    out = set()
+    for s in t["sprites"]:
+        if s["image_index"] == 0xFF:
+            continue
+        y, x = (s["screen_y"] + 16) % 256 - 16, (s["screen_x"] + 16) % 256 - 16  # bytes: 252 means -4
+        for yy in (y, y + 15):
+            for xx in (x, x + 15):
+                if 0 <= yy < 144 and 0 <= xx < 160:
+                    out.add((yy // 16, xx // 16))
+    return out

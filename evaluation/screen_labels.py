@@ -56,3 +56,21 @@ def label(t, frame):
     if boxes == {(12, 0)} and not v[:12].any():
         return "dialogue"
     return "menu"
+
+
+def main():
+    """Write data/raw/<run>/screen.json: one label per frame, in frame order."""
+    import json
+
+    import cv2
+    for d in sorted(Path("data/raw").iterdir()):
+        out = []
+        for line in open(d / "labels.jsonl"):
+            t = json.loads(line)
+            out.append(label(t, cv2.imread(str(d / "frames" / f"{t['i']:06d}.png"), cv2.IMREAD_GRAYSCALE)))
+        (d / "screen.json").write_text(json.dumps(out))
+        print(d.name, len(out), flush=True)
+
+
+if __name__ == "__main__":
+    main()
