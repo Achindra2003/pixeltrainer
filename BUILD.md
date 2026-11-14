@@ -25,14 +25,14 @@ Legend: `[ ]` todo, `[x]` done, `(R)` needs the ROM running, `(H)` needs a human
 
 - [x] **1.1 `pixeltrainer/emu.py`.** `Emu(rom, state, headless=True, seed=0)`, `reset()` (load state + random idle 0–300 frames from seed), `frame() -> np.ndarray (144,160) uint8 grey`, `press(button)`, `wait_until_stable(max_frames)`, `step(button) -> frame`. Exposes the `PyBoy` object only through `self._pyboy` for the evaluator. Done when a test shows two runs with the same seed produce identical frames, and different seeds diverge.
 - [x] **1.2 Grey palette.** Map the RGBA screen to 4 shade indices 0–3 once in `frame()`. Every module works on shade indices. Done when `np.unique(frame())` ⊆ {0,1,2,3} on 100 random frames.
-- [x] **1.3 `tools/record_dataset.py`.** Runs a scripted walker (random walk with goal bias, presses A in dialogue, picks move 1 in battles) and saves per stable frame: `frame.png` + `truth.json`. Output `data/raw/<run_id>/`. Run IDs 0–9 train, 10–14 validation, 15–19 test. Done when ~20k frames exist covering Pallet, Route 1, Viridian, buildings, battles. Done 2026-11-14: 20 runs, 66k frames (24.5k stable): Pallet, Route 1, Viridian, player's house (maps 37/38), 11.5k battle frames. No Viridian buildings or Oak's lab.
+- [x] **1.3 `tools/record_dataset.py`.** Runs a scripted walker (random walk with goal bias, presses A in dialogue, picks move 1 in battles) and saves per stable frame: `frame.png` + `truth.json`. Output `data/raw/<run_id>/`. Run IDs 0–9 train, 10–14 validation, 15–19 test. Done when ~20k frames exist covering Pallet, Route 1, Viridian, buildings, battles. Done 2026-11-14: 20 runs, 65k frames; Pallet, Route 1, Viridian, player's house (maps 37/38). Re-recorded with overworld A presses (5%) to get dialogue. No Viridian buildings or Oak's lab.
 - [ ] **1.4 Dataset viewer.** `tools/view_dataset.py`: step through frames with truth printed. Used to spot-check labels.
 
 ---
 
 ## Phase 2 — Screen state, grid, tiles
 
-- [ ] **2.1 Screen-state labels.** Derive overworld/battle/dialogue/menu/transition from truth fields (rules found in 0.6). Spot-check 200 frames by hand. Done when spot-check disagreement < 1%.
+- [x] **2.1 Screen-state labels.** Derive overworld/battle/dialogue/menu/transition from truth fields (rules found in 0.6). Spot-check 200 frames by hand. Done when spot-check disagreement < 1%. Done: `evaluation/screen_labels.py` (RAM + glyph visibility, `tools/build_glyphs.py`). Spot-check 0/200 disagreements after fixing stale-menu frames and the in-battle party menu; 20/20 dialogue samples correct. Counts: overworld 30403, battle 26214, menu 6237, transition 1919, dialogue 462.
 - [ ] **2.2 Heuristic baseline.** `perception/screen_state.py::heuristic()`: text-box border pattern + battle HP-bar pattern + mean intensity for fades. Report its accuracy.
 - [ ] **2.3 Screen-state CNN.** Train (`tools/train_screen_state.py`), save `models/screen_state.pt`. Done when test accuracy ≥ 99% and inference < 2 ms per frame on CPU.
 - [ ] **2.4 `perception/grid.py`.** Frame → 9×10×16×16 cells, player cell index, cell hashing. Unit test with a synthetic frame.

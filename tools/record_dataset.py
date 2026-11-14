@@ -104,6 +104,8 @@ class Recorder:
         self.text_len = 0
         if r < 0.02:
             return "start"
+        if r < 0.07:  # talk to whatever is in front (NPCs, signs): the only source of dialogue frames
+            return "a"
         if t["map_id"] == self.goal_map and self.rng.random() < 0.02:  # wander a while, then turn back
             self.goal_map, self.goal = (0, "down") if self.goal_map == 1 else (1, "up")
         if t["map_id"] == self.goal_map or r > 0.7:
