@@ -1,0 +1,9 @@
+[project]
+name = "pixeltrainer"
+version = "0.1.0"
+description = "Vision-only agent that plays Pokémon Red from screen pixels"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
