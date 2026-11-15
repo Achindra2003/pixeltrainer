@@ -80,11 +80,13 @@ class WorldMap:
             self.labels[(self.seg, self.pos[0] + ux, self.pos[1] + uy)] = ("wall", 1.0, -1)
             # shortcut: a cell an NPC blocked stays a wall; un-mark it once perception/npc.py exists.
         self.pos = (self.pos[0] + move[0], self.pos[1] + move[1])
+        self.observe((self.seg, *self.pos), "walkable", 0.5)  # stood on, so passable; the sprite hides what it is
 
     def _jump(self, frame):
         """New place (door or warp): link the door cell in front of the old position to the new one."""
         ux, uy = registration.DELTA.get(self.last_dir, (0, 0))
         door = (self.seg, self.pos[0] + ux, self.pos[1] + uy)
+        self.labels[door] = ("door", 1.0, -1)
         self._place(frame)
         self.doors.append((door, (self.seg, *self.pos)))
 

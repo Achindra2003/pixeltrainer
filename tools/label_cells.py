@@ -1,6 +1,8 @@
 """Label every unique overworld cell once (task 2.6, needs a human). Saves assets/cell_labels.json.
 
 Usage: python tools/label_cells.py      (needs data/cells.npz from tools/cell_inventory.py)
+       python tools/label_cells.py --auto   write only the guesses to assets/cell_labels_auto.json,
+                                            which perception/tiles.py uses until the checked labels exist
 
 Each cell is pre-filled: walkable/wall from RAM collision, then a guess from its tile IDs (Gen 1
 overworld tileset: grass 0x52, water 0x14, doors 0x1B/0x58, ledges 0x36/0x37 south, 0x27 west,
@@ -13,6 +15,7 @@ Keys (in the image window):
   q / Esc      save and quit (progress is also saved after every key)
 """
 import json
+import sys
 from pathlib import Path
 
 import cv2
@@ -52,6 +55,11 @@ def show(z, i, label):
 def main():
     z = np.load("data/cells.npz")
     keys = [str(k) for k in z["keys"]]
+    if "--auto" in sys.argv:
+        auto = {k: prefill(z["tiles"][i], z["votes"][i][1] > 0) for i, k in enumerate(keys)}
+        OUT.with_name("cell_labels_auto.json").write_text(json.dumps(auto, indent=1))
+        print(f"{len(auto)} guessed labels -> {OUT.with_name('cell_labels_auto.json')}")
+        return
     labels = json.loads(OUT.read_text()) if OUT.exists() else {}
     i = next((n for n, k in enumerate(keys) if k not in labels), len(keys))
     while i < len(keys):

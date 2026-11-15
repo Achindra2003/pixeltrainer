@@ -38,7 +38,7 @@ Legend: `[ ]` todo, `[x]` done, `(R)` needs the ROM running, `(H)` needs a human
 - [x] **2.4 `perception/grid.py`.** Frame → 9×10×16×16 cells, player cell index, cell hashing. Unit test with a synthetic frame. Done (`tests/test_grid.py`).
 - [x] **2.5 Unique-cell inventory.** Collect all unique overworld cells from train runs with RAM walkable flag. Report count. Done: `tools/cell_inventory.py` -> `data/cells.npz`. 101 unique background cells from 6119 frames (sprite cells masked; ~30 are water animation frames); 17 walkable; RAM walkability never disagrees within a cell.
 - [ ] **2.6 `tools/label_cells.py` (H).** Shows each unique cell enlarged with neighbours; keys for each class; walkable pre-filled. Saves `assets/cell_labels.json`. Done when every unique cell is labelled.
-- [ ] **2.7 Lookup classifier.** Exact-hash lookup, `unknown` on miss.
+- [x] **2.7 Lookup classifier.** Exact-hash lookup, `unknown` on miss. Done: `perception/tiles.py::lookup`. Uses `assets/cell_labels.json` once 2.6 is done; until then the RAM-based guesses in `assets/cell_labels_auto.json` (`tools/label_cells.py --auto`). Test runs 15-19: 97.6% of visible cells found, walkable/blocked agrees with RAM collision on 100% of them.
 - [ ] **2.8 Tile CNN.** Train on labelled cells (with shift ±1 px and noise augmentation). Evaluate on test runs (seen area) and on Viridian Forest frames (unseen area). Done when walkable accuracy ≥ 98% in the seen area.
 
 ---
@@ -56,11 +56,11 @@ Legend: `[ ]` todo, `[x]` done, `(R)` needs the ROM running, `(H)` needs a human
 
 - [x] **4.1 `planning/astar.py`.** Grid A*, costs from PLAN.md §4.6, ledges as directed edges. Unit tests: wall detour, grass avoidance, ledge one-way. Done: `tests/test_astar.py`.
 - [x] **4.2 `planning/explore.py`.** Goal = compass direction + landmark template. Frontier scoring; frontier limited to the region grown from the player cell (region growing over passable cells). Unit test on a synthetic partial map. Done: frontier = unknown cells next to the grown region (ledges one-way); score = progress - 0.5 x steps; path by astar. Landmark is 4.3. `tests/test_explore.py`.
-- [ ] **4.3 Landmark templates.** Capture Pokémon Center roof (and Viridian sign if useful) into `assets/landmarks/`.
-- [ ] **4.4 `pixeltrainer/agent.py` (overworld only).** State machine; battles handled by a placeholder (press A, pick first move). Watchdog for stuck states.
-- [ ] **4.5 First end-to-end run.** Done when the agent reaches Viridian from `pallet_start` in ≥ 8 of 10 seeds (checked by the evaluator via RAM).
+- [x] **4.3 Landmark templates.** Capture Pokémon Center roof (and Viridian sign if useful) into `assets/landmarks/`. Done: the Center's "POKé" sign (`tools/capture_landmark.py` -> `assets/landmarks/poke_sign.png`), NCC >= 0.9 (`perception/landmark.py`). Test runs 15-19: 237 Viridian frames above the threshold, best score off Viridian 0.44.
+- [x] **4.4 `pixeltrainer/agent.py` (overworld only).** State machine; battles handled by a placeholder (press A, pick first move). Watchdog for stuck states. Done. A door entered by accident (`pallet_start` stands under Oak's lab) is left at once and labelled `door`; cells the player stood on count as walkable (0.5); with no frontier inside a building, back to the arrival cell and walk south.
+- [x] **4.5 First end-to-end run.** Done when the agent reaches Viridian from `pallet_start` in ≥ 8 of 10 seeds (checked by the evaluator via RAM). Done: 10/10 seeds, 87-324 decisions (0-236 of them in battle). `evaluation/run_agent.py`, `runs/agent_eval.txt`. Tile labels are still the unchecked guesses (2.6).
 
-**Milestone A: navigation demo works.**
+**Milestone A: navigation demo works.** Reached: 10/10 seeds (4.5).
 
 ---
 
