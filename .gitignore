@@ -17,5 +17,5 @@ __pycache__/
 .venv/
 
 # Claude session notes
-baton.txt
+baton*.txt
 2026-*.txt
