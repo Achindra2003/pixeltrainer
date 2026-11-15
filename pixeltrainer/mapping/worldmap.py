@@ -144,7 +144,7 @@ class WorldMap:
                     continue
                 self.keys[cell] = ks[r, c]
                 self.where.setdefault(ks[r, c], set()).add(cell)
-                if labels is not None:
+                if labels is not None and labels[r][c] is not None:  # a lookup miss says nothing
                     self.observe(cell, labels[r][c], 1.0 if conf is None else float(conf[r][c]), t)
 
     def observe(self, cell, label, confidence, t=0):

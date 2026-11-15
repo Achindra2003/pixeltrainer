@@ -4,9 +4,10 @@ Usage: python tools/label_cells.py      (needs data/cells.npz from tools/cell_in
        python tools/label_cells.py --auto   write only the guesses to assets/cell_labels_auto.json,
                                             which perception/tiles.py uses until the checked labels exist
 
-Each cell is pre-filled: walkable/wall from RAM collision, then a guess from its tile IDs (Gen 1
-overworld tileset: grass 0x52, water 0x14, doors 0x1B/0x58, ledges 0x36/0x37 south, 0x27 west,
-0x0D/0x1D east). Check the guess and fix it.
+Each cell is pre-filled: walkable/wall from RAM collision, then, for cells seen on outdoor maps only
+(Pallet, Route 1, Viridian use the overworld tileset), a guess from its tile IDs: grass 0x52, water 0x14,
+doors 0x1B/0x58, ledges 0x36/0x37 south, 0x27 west, 0x0D/0x1D east. Indoor tilesets reuse those IDs
+(0x14 is the house's exit mat). Check the guess and fix it.
 
 Keys (in the image window):
   1 walkable  2 wall  3 grass  4 water  5 door  6 ledge_s  7 ledge_e  8 ledge_w  9 sign
@@ -27,9 +28,12 @@ GUESS = [({0x52}, "grass"), ({0x14}, "water"), ({0x1B, 0x58}, "door"),
          ({0x36, 0x37}, "ledge_s"), ({0x0D, 0x1D}, "ledge_e"), ({0x27}, "ledge_w")]
 
 
-def prefill(tiles, walkable):
+OUTDOOR = {"0", "1", "12"}
+
+
+def prefill(tiles, walkable, maps):
     ids = set(int(x) for x in tiles.ravel())
-    for t, name in GUESS:
+    for t, name in GUESS if set(str(maps).split(",")) <= OUTDOOR else ():
         if ids & t:
             return name
     return "walkable" if walkable else "wall"
@@ -56,7 +60,7 @@ def main():
     z = np.load("data/cells.npz")
     keys = [str(k) for k in z["keys"]]
     if "--auto" in sys.argv:
-        auto = {k: prefill(z["tiles"][i], z["votes"][i][1] > 0) for i, k in enumerate(keys)}
+        auto = {k: prefill(z["tiles"][i], z["votes"][i][1] > 0, z["maps"][i]) for i, k in enumerate(keys)}
         OUT.with_name("cell_labels_auto.json").write_text(json.dumps(auto, indent=1))
         print(f"{len(auto)} guessed labels -> {OUT.with_name('cell_labels_auto.json')}")
         return
@@ -64,7 +68,7 @@ def main():
     i = next((n for n, k in enumerate(keys) if k not in labels), len(keys))
     while i < len(keys):
         k = keys[i]
-        current = labels.get(k) or prefill(z["tiles"][i], z["votes"][i][1] > 0)
+        current = labels.get(k) or prefill(z["tiles"][i], z["votes"][i][1] > 0, z["maps"][i])
         show(z, i, current)
         key = cv2.waitKeyEx(0)
         if key in (ord("q"), 27) or cv2.getWindowProperty("label cells", cv2.WND_PROP_VISIBLE) < 1:

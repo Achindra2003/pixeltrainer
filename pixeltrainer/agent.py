@@ -1,11 +1,13 @@
-"""The agent: frames in, buttons out (PLAN.md §4.9, task 4.4). Overworld only; battles use a placeholder.
+"""The agent: frames in, buttons out (PLAN.md §4.9, tasks 4.4 and 5.7).
 
 State machine on the screen state (perception/screen_state.cnn):
 - overworld: tile lookup -> world map update -> stop if the landmark is seen -> explore toward the goal
   direction; the first step of the plan is the action. A door entered by accident is left at once (and
   is labelled "door" in the map, so the planner avoids it). With no frontier left (inside a building),
   walk back to the arrival cell and out.
-- battle: press A (FIGHT, then the first move, then through the text). Placeholder until 5.7.
+- battle (perception/battle.py): main menu -> move the cursor to FIGHT, A; fight menu -> the policy
+  (policy/battle_policy.py) picks a move once per visit, move the cursor there, A; text -> A, except a
+  move-learn prompt, which is declined (B at "Delete an older move?", A at "Abandon learning?").
 - dialogue: A. menu: B (the party menu opened by A-spam in battle, the start menu).
 - transition: wait.
 Watchdog: if the overworld position or the screen does not change for STUCK decisions, take a random
@@ -20,17 +22,18 @@ import numpy as np
 
 from pixeltrainer.emu import DIRECTIONS, Emu
 from pixeltrainer.mapping.worldmap import WorldMap
-from pixeltrainer.perception import landmark, screen_state, tiles
+from pixeltrainer.perception import battle, landmark, ocr, screen_state, tiles
 from pixeltrainer.planning.astar import astar
 from pixeltrainer.planning.explore import explore
+from pixeltrainer.policy.battle_policy import choose
 
 STUCK = 8
 BACK = {"up": "down", "down": "up", "left": "right", "right": "left"}
 
 
 class Agent:
-    def __init__(self, goal="north", target="poke_sign", seed=0):
-        self.goal, self.target = goal, target
+    def __init__(self, goal="north", target="poke_sign", seed=0, policy="type"):
+        self.goal, self.target, self.policy = goal, target, policy
         self.rng = np.random.default_rng(seed)
         self.map = WorldMap()
         self.last_action = None
@@ -39,12 +42,17 @@ class Agent:
         self.plan = None  # (path, target cell) of the last overworld decision, for the live view
         self.done = False
         self.n_doors, self.leaving = 0, False
+        self.state = None
+        self.move_choice, self.reason = None, ""  # chosen move index for this fight-menu visit; why
 
     def act(self, frame, t=0):
         """One decision: the button to press for this stable frame (None = wait)."""
         state = screen_state.cnn(frame)
         key = (state, frame.tobytes()) if state != "overworld" else None
-        direction = self.last_action if self.last_action in DIRECTIONS else None
+        # a direction pressed in a battle menu moves the cursor, not the player
+        walked = self.last_action in DIRECTIONS and self.state in (None, "overworld", "transition")
+        direction = self.last_action if walked else None
+        self.state = state
         if state == "overworld":
             labels, conf = tiles.lookup(frame)
             _, x, y = self.map.update(frame, state, direction, labels, conf, t)
@@ -55,7 +63,7 @@ class Agent:
             action = self._overworld((x, y))
         else:
             self.map.update(frame, state, direction)  # the map remembers the step that led into a door
-            action = {"battle": "a", "dialogue": "a", "menu": "b", "transition": None}[state]
+            action = self._battle(frame) if state == "battle" else                 {"dialogue": "a", "menu": "b", "transition": None}[state]
         self.same = self.same + 1 if key == self.prev_key else 0
         self.prev_key = key
         if self.same >= STUCK:
@@ -64,6 +72,27 @@ class Agent:
             self.same = 0
         self.last_action = action
         return action
+
+    def _battle(self, frame):
+        m = battle.menu(frame)
+        if m != "fight":
+            self.move_choice = None
+        if m == "main":
+            c = battle.cursor(frame)  # 0 FIGHT, 1 PKMN, 2 ITEM, 3 RUN
+            return "a" if c == 0 else "left" if c in (1, 3) else "up" if c == 2 else "a"
+        if m == "fight":
+            moves = battle.moves(frame)
+            if self.move_choice is None and moves:
+                own, enemy = ocr.read(frame, 7, 10, 20), battle.species(frame)[1]
+                self.move_choice, self.reason = choose(self.policy, moves, own, enemy, self.rng)
+            c, k = battle.cursor(frame), self.move_choice
+            if c is None or k is None or c == k:
+                return "a"
+            return "down" if c < k else "up"
+        text = " ".join(ocr.read(frame, r) for r in (14, 16))
+        if "older move" in text or "make room" in text:
+            return "b"
+        return "a"
 
     def _overworld(self, pos):
         if len(self.map.doors) > self.n_doors:  # just went through a door (or a warp)
