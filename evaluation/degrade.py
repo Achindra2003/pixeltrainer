@@ -15,6 +15,7 @@ import numpy as np
 
 PALETTE = np.array([255, 153, 85, 0], np.uint8)  # shade index -> grey, as PyBoy draws it
 CANVAS = (360, 400)  # (h, w) of the captured image
+LCD_UP = 4
 TYPES = ("geometric", "defocus", "motion", "gaussian", "saltpepper", "poisson",
          "gamma", "illumination", "cast", "moire")
 LEVELS = {
@@ -73,8 +74,15 @@ def degrade(frame, types, seed=0):
 
     corners = _corners(s["geometric"], rng)
     H = cv2.getPerspectiveTransform(np.float32([[0, 0], [160, 0], [160, 144], [0, 144]]), corners)
-    warped = cv2.warpPerspective(screen, H, CANVAS[::-1], flags=cv2.INTER_LINEAR)
-    mask = cv2.warpPerspective(np.ones((144, 160), np.float32), H, CANVAS[::-1])[..., None]
+    # LCD pixels are square blocks: draw the screen at LCD_UP x by repetition, then warp that (warping the
+    # 160x144 frame directly would interpolate linearly between pixel centres). Up-sampled pixel (X, Y)
+    # has its centre at screen point ((X - (LCD_UP - 1) / 2) / LCD_UP, ...).
+    big = np.repeat(np.repeat(screen, LCD_UP, 0), LCD_UP, 1)
+    o = (LCD_UP - 1) / 2
+    Hb = H @ np.array([[1 / LCD_UP, 0, -o / LCD_UP], [0, 1 / LCD_UP, -o / LCD_UP], [0, 0, 1]])
+    # Replicated border: the edge ramp comes from the mask alone (a black border would darken it twice).
+    warped = cv2.warpPerspective(big, Hb, CANVAS[::-1], flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    mask = cv2.warpPerspective(np.ones(big.shape[:2], np.float32), Hb, CANVAS[::-1])[..., None]
     img = warped * mask + _background(s["geometric"], rng) * (1 - mask)
 
     psf = np.ones((1, 1), np.float32)

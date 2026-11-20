@@ -40,7 +40,7 @@ def main():
             got = localise(img)
             errs.append(np.inf if got is None else float(np.linalg.norm(got - meta["corners"], axis=1).max()))
         e = np.array(errs)
-        print(f"level {level}: corner error median {np.median(e):.2f} px, 95th pct {np.percentile(e, 95):.2f}, "
+        print(f"level {level}: corner error median {np.median(e):.2f} px, 95th pct {np.percentile(e, 95, method='nearest'):.2f}, "
               f"<= 1 px {np.mean(e <= 1):.1%}, failed (> 5 px) {np.mean(e > 5):.1%}", flush=True)
 
 
