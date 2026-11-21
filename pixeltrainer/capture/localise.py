@@ -3,8 +3,8 @@
 1. Coarse: background subtraction. Fit a plane per colour channel to a ring at the image border (the
    background: one grey under a linear light gradient and colour cast), refitted without outliers
    (clutter). Screen = pixels whose mean absolute (channel-mean) difference from that model (5x5 Gaussian) is > BG_DIST,
-   and whose colour, divided by the model, is grey (the cast cancels; clutter is coloured). Opening (drops
-   thin lines), closing (fills tiles the same grey as the background), largest contour. Its sides: on each
+   and whose colour, divided by the model, is grey (the cast cancels; clutter is coloured). Min then max filter (drops
+   thin lines), max then min filter (fills tiles the same grey as the background), largest contour. Its sides: on each
    side of the centroid, the strongest Hough line of the outline, refitted to the outline points near it
    (a clutter box joined to the mask is shorter than a screen side). Fallback: hull, approxPolyDP to 4
    corners, else the minimum-area rectangle.
@@ -80,6 +80,7 @@ def coarse(image):
         # brightness (HSV saturation does not: dark pixels under a cast read as saturated). Clutter is coloured.
         ratio = cv2.GaussianBlur(img, (5, 5), 0) / np.maximum(bg, 1)
         mask[ratio.max(-1) - ratio.min(-1) > MAX_CHROMA] = 0
+    # Order-statistic (min/max) filters on the binary mask (U2-T1), i.e. opening then closing.
     rect = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, rect)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_RECT, (41, 41)))
