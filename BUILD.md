@@ -105,7 +105,7 @@ Legend: `[ ]` todo, `[x]` done, `(R)` needs the ROM running, `(H)` needs a human
 - [x] **7.3 `evaluation/run_eval.py`.** N seeds × goals × policies; logs per-frame perception and truth to `runs/eval/<timestamp>/`. Done: per decision, agent state, segment and position next to RAM map, x, y, in_battle; one jsonl per (policy, seed), finished ones skipped (`--out` resumes); `--input sim:<level>`. Goal: north only (the Forest goal was cut, 6.4).
 - [x] **7.4 `evaluation/report.py`.** All tables and plots from PLAN.md §5, plus ablations, into `runs/eval/<timestamp>/report/`. Done: per policy success, decisions, decisions/s, win rate, odometry drift per 100 steps, battle-state agreement vs RAM; every component eval included verbatim; plots copied. Ablations not run (decided 2026-11-21: agent behaviour, not CV; listed as future work in REPORT.md).
 - [ ] **7.5 Demo video.** Record one clean run.
-- [ ] **7.6 Written report.** Method, the RAM-use statement, results, limitations, future work. Draft in `REPORT.md`; pending the final agent table (§5.1), the 2.8 result and PDF export.
+- [ ] **7.6 Written report.** Method, the RAM-use statement, results, limitations, future work. Draft in `REPORT.md`; pending the 2.8 result and PDF export.
 
 ---
 

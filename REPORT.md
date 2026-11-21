@@ -9,7 +9,7 @@ PixelTrainer plays Pokémon Red in the PyBoy emulator using only the pixels on t
 A second mode makes the vision problem harder. In `sim:<level>` mode each frame is first degraded into a camera-like photograph of the screen (tilt, blur, noise, colour cast, uneven light, moiré). The agent must then find the screen, restore it, rectify it and quantise it back to the game's 4 shades before the normal pipeline runs. This is where most of the taught image-processing methods do real work.
 
 Headline results:
-- On clean frames the agent reaches Viridian City in **10/10** seeds (and in every episode of the final evaluation, §5.1).
+- On clean frames the agent reaches Viridian City in **60/60** episodes (20 seeds × 3 battle policies), with 0 map drift.
 - Perception components meet their targets on unseen test runs: screen state 99.49%, NPC detection precision 100% and recall 97.5%, species 100%, HP bar MAE 0.63%, OCR 99.99% on drawn text, map position error 0 tiles on 12,212 frames.
 - Under simulated capture the agent still succeeds at degradation level 1 in 3/3 seeds with restoration (2/3 without it). It fails from level 2 upward. The first part to break is the screen-state CNN, which was trained only on clean frames.
 
@@ -61,9 +61,15 @@ Untaught methods (watershed, optical flow, structure from motion, learned detect
 
 ### 5.1 Task and battles (clean frames)
 
-PENDING: table from `python evaluation/report.py runs/eval/final` (20 seeds × 3 policies).
+20 seeds per policy (`python evaluation/report.py runs/eval/final`):
 
-Earlier 10-seed runs: all 30 episodes reached Viridian. Battles won: random 12/14 (2 blackouts), greedy 15/15, type-aware 15/15 (67 decisions per win against 92 for random). Greedy equals type-aware on this route: Charmander knows only SCRATCH and GROWL, and Route 1 has only Normal/Flying species, so type never changes the choice.
+| Policy | Reached Viridian | Decisions (mean) | Decisions/s | Battles | Won | Drift per 100 steps | Battle state vs RAM |
+|---|---|---|---|---|---|---|---|
+| random | 20/20 | 290 | 31.9 | 37 | 81.1% | 0 (1,925 steps) | 99.77% |
+| greedy | 20/20 | 206 | 30.9 | 36 | 100% | 0 (1,526 steps) | 99.68% |
+| type-aware | 20/20 | 206 | 32.2 | 36 | 100% | 0 (1,526 steps) | 99.68% |
+
+Drift counts slips of the agent's map position against RAM within one map segment and one RAM map; it never slipped. Battle-state agreement leaves out fade frames, which read "transition" while RAM is already in battle. A lost battle sends the player back to Pallet, so random still reaches Viridian, only later. Greedy equals type-aware on this route: Charmander knows only SCRATCH and GROWL, and Route 1 has only Normal/Flying species, so type never changes the choice.
 
 ### 5.2 Perception (test runs 15–19, unseen)
 
