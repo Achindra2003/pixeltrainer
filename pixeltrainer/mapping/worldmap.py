@@ -48,8 +48,10 @@ class WorldMap:
         self.last_dir = None
 
     # --- position ---------------------------------------------------------------------------
-    def update(self, frame, state, direction=None, labels=None, conf=None, t=0, mask_cells=(grid.PLAYER,)):
+    def update(self, frame, state, direction=None, labels=None, conf=None, t=0, mask_cells=(grid.PLAYER,),
+               npc_cells=()):
         """Feed one stable frame. labels/conf: optional (9, 10) tile classes and confidences.
+        npc_cells: (row, col) screen cells holding a detected NPC (perception/npc.py); a bump into one is not a wall.
         Returns (seg, x, y), or None while not in the overworld."""
         if direction:
             self.last_dir = direction
@@ -63,7 +65,7 @@ class WorldMap:
             if move is None:
                 self._jump(frame)
             else:
-                self._move(move, direction)
+                self._move(move, direction, npc_cells)
         else:
             move = registration.step(self.last, frame, None, mask_cells)
             if move is None:
@@ -74,11 +76,11 @@ class WorldMap:
         self._observe(frame, labels, conf, t, mask_cells)
         return (self.seg, *self.pos)
 
-    def _move(self, move, direction):
+    def _move(self, move, direction, npc_cells=()):
         if move == (0, 0) and direction:
             ux, uy = registration.DELTA[direction]
-            self.labels[(self.seg, self.pos[0] + ux, self.pos[1] + uy)] = ("wall", 1.0, -1)
-            # shortcut: a cell an NPC blocked stays a wall; un-mark it once perception/npc.py exists.
+            if (grid.PLAYER[0] + uy, grid.PLAYER[1] + ux) not in npc_cells:  # an NPC moves away; a wall does not
+                self.labels[(self.seg, self.pos[0] + ux, self.pos[1] + uy)] = ("wall", 1.0, -1)
         self.pos = (self.pos[0] + move[0], self.pos[1] + move[1])
         self.observe((self.seg, *self.pos), "walkable", 0.5)  # stood on, so passable; the sprite hides what it is
 

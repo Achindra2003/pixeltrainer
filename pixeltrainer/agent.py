@@ -22,7 +22,7 @@ import numpy as np
 
 from pixeltrainer.emu import DIRECTIONS, Emu
 from pixeltrainer.mapping.worldmap import WorldMap
-from pixeltrainer.perception import battle, landmark, ocr, screen_state, tiles
+from pixeltrainer.perception import battle, landmark, npc, ocr, screen_state, tiles
 from pixeltrainer.planning.astar import astar
 from pixeltrainer.planning.explore import explore
 from pixeltrainer.policy.battle_policy import choose
@@ -55,7 +55,8 @@ class Agent:
         self.state = state
         if state == "overworld":
             labels, conf = tiles.lookup(frame)
-            _, x, y = self.map.update(frame, state, direction, labels, conf, t)
+            npcs = {d["cell"] for d in npc.detect(frame)}
+            _, x, y = self.map.update(frame, state, direction, labels, conf, t, npc_cells=npcs)
             key = (state, self.map.seg, x, y)
             if landmark.seen(frame, self.target):
                 self.done = True
@@ -115,9 +116,11 @@ class Agent:
         return path[0] if path else str(self.rng.choice(DIRECTIONS))
 
 
-def run(emu, agent, max_decisions=1500, on_decision=None):
-    """Play until the agent declares success or the decision budget runs out. Returns decisions used."""
-    frame = emu.frame()
+def run(emu, agent, max_decisions=1500, on_decision=None, view=None):
+    """Play until the agent declares success or the decision budget runs out. Returns decisions used.
+    view: optional frame -> frame applied to what the agent sees (e.g. simulated capture, task 8.7)."""
+    view = view or (lambda f: f)
+    frame = view(emu.frame())
     for n in range(max_decisions):
         action = agent.act(frame, n)
         if on_decision:
@@ -129,6 +132,7 @@ def run(emu, agent, max_decisions=1500, on_decision=None):
             frame = emu.frame()
         else:
             frame = emu.step(action)
+        frame = view(frame)
     return max_decisions
 
 
