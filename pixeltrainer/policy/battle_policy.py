@@ -4,6 +4,8 @@ Inputs are what perception read: the move names in the fight menu, the own speci
 screen) and the enemy species (sprite match). Expected damage = power x STAB x effectiveness x accuracy.
 Status moves (power 0) are worth STATUS_VALUE, so they win only when nothing deals damage.
 """
+import difflib
+
 import numpy as np
 
 from pixeltrainer.policy.gamedata import MOVE_ID, MOVES, SPECIES, SPECIES_ID, effectiveness
@@ -13,7 +15,14 @@ POLICIES = ("random", "greedy", "type")
 
 
 def _move(name):
-    return MOVES[MOVE_ID[name]]  # (name, type, power, accuracy, pp)
+    """(name, type, power, accuracy, pp). A degraded capture can misread letters ('G  WL' for GROWL), so an
+    unknown name snaps to the closest known one; with none close it counts as a status move."""
+    if name not in MOVE_ID:
+        close = difflib.get_close_matches(name, MOVE_ID, n=1, cutoff=0.6)
+        if not close:
+            return name, "NORMAL", 0, 100, 0
+        name = close[0]
+    return MOVES[MOVE_ID[name]]
 
 
 def expected(move, own_types, enemy_types):

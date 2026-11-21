@@ -20,3 +20,9 @@ def test_ghost_immune_to_normal():
 def test_greedy_and_random():
     assert choose("greedy", ["GROWL", "SCRATCH"])[0] == 1
     assert choose("random", ["GROWL", "SCRATCH"])[0] in (0, 1)
+
+
+def test_misread_move_name_snaps_to_closest_or_counts_as_status():
+    from pixeltrainer.policy.battle_policy import _move
+    assert _move("G  WL")[0] == "GROWL"  # OCR on a degraded capture (task 8.7)
+    assert _move("xx")[2] == 0
