@@ -23,6 +23,8 @@ def test_bump_into_npc_is_not_a_wall():
     m.update(frame, "overworld")
     above = (grid.PLAYER[0] - 1, grid.PLAYER[1])
     m.update(frame, "overworld", "up", npc_cells={above})
-    assert m.label((m.pos[0], m.pos[1] - 1)) != "wall"
+    assert m.label((m.pos[0], m.pos[1] - 1)) == "npc"
+    m.observe((m.seg, m.pos[0], m.pos[1] - 1), "walkable", 0.9)  # the NPC left; the lookup sees the tile
+    assert m.label((m.pos[0], m.pos[1] - 1)) == "walkable"
     m.update(frame, "overworld", "up")
     assert m.label((m.pos[0], m.pos[1] - 1)) == "wall"

@@ -50,12 +50,17 @@ def mad(prev, cur, dcol, drow, mask_cells=(grid.PLAYER,)):
 
 def step(prev, cur, direction=None, mask_cells=(grid.PLAYER,)):
     """Player move in cells as (dcol, drow): (0, 0) blocked, (1, 0) one step right, (0, 2) a ledge jump south.
-    With the pressed direction, picks the best of 0/1/2 cells that way; without it, uses phase correlation.
-    Returns None for a transition (fade, door, battle) or when nothing fits."""
+    With the pressed direction, picks the best of 0/1/2 cells that way; if none fits (noisy shades from a
+    degraded capture raise every MAD, task 8.6), phase correlation decides among those same moves.
+    Without a direction, uses phase correlation. Returns None for a transition (fade, door, battle) or when
+    nothing fits."""
     if direction:
         ux, uy = DELTA[direction]
         cost, k = min((mad(prev, cur, k * ux, k * uy, mask_cells), k) for k in (0, 1, 2))
-        return (k * ux, k * uy) if cost <= MAX_MAD else None
+        if cost <= MAX_MAD:
+            return k * ux, k * uy
+        move = step(prev, cur, None, mask_cells)
+        return move if move in {(k * ux, k * uy) for k in (0, 1, 2)} else None
     dx, dy, response = shift(prev, cur, mask_cells)
     if response < TRANSITION_RESPONSE:
         return None

@@ -51,7 +51,9 @@ class WorldMap:
     def update(self, frame, state, direction=None, labels=None, conf=None, t=0, mask_cells=(grid.PLAYER,),
                npc_cells=()):
         """Feed one stable frame. labels/conf: optional (9, 10) tile classes and confidences.
-        npc_cells: (row, col) screen cells holding a detected NPC (perception/npc.py); a bump into one is not a wall.
+        npc_cells: (row, col) screen cells holding a detected NPC (perception/npc.py). A bump into one marks the
+        cell "npc" below CONFIDENT, not a wall: the planner avoids it, and the tile lookup replaces it once the
+        NPC has gone (an NPC that walks beside the player otherwise draws endless bumps).
         Returns (seg, x, y), or None while not in the overworld."""
         if direction:
             self.last_dir = direction
@@ -79,8 +81,8 @@ class WorldMap:
     def _move(self, move, direction, npc_cells=()):
         if move == (0, 0) and direction:
             ux, uy = registration.DELTA[direction]
-            if (grid.PLAYER[0] + uy, grid.PLAYER[1] + ux) not in npc_cells:  # an NPC moves away; a wall does not
-                self.labels[(self.seg, self.pos[0] + ux, self.pos[1] + uy)] = ("wall", 1.0, -1)
+            npc_bump = (grid.PLAYER[0] + uy, grid.PLAYER[1] + ux) in npc_cells
+            self.labels[(self.seg, self.pos[0] + ux, self.pos[1] + uy)] = ("npc", 0.5, -1) if npc_bump else ("wall", 1.0, -1)
         self.pos = (self.pos[0] + move[0], self.pos[1] + move[1])
         self.observe((self.seg, *self.pos), "walkable", 0.5)  # stood on, so passable; the sprite hides what it is
 
