@@ -52,7 +52,8 @@ def sim_view(level, seed, use_restore=True):
     return view, state
 
 
-def episode(seed, max_decisions, policy="type", battles=None, level=None, use_restore=True, tag=""):
+def episode(seed, max_decisions, policy="type", battles=None, level=None, use_restore=True, tag="", trace=None):
+    """trace: optional list; gets one row per decision, perception next to RAM truth (evaluation/run_eval.py)."""
     emu = Emu(state="states/pallet_start.state", seed=seed)
     emu.reset()
     agent = Agent(seed=seed, policy=policy)
@@ -60,6 +61,9 @@ def episode(seed, max_decisions, policy="type", battles=None, level=None, use_re
 
     def log(n, frame, action):
         t = truth.read(emu._pyboy)
+        if trace is not None:
+            trace.append({"n": n, "action": action, "state": agent.state, "seg": agent.map.seg, "pos": agent.map.pos,
+                          "map": t["map_id"], "x": t["x"], "y": t["y"], "in_battle": t["in_battle"]})
         seen["battle decisions"] += bool(t["in_battle"])
         seen["max map"] = max(seen["max map"], t["map_id"] == VIRIDIAN)
         if t["in_battle"] and "enemy" in t:

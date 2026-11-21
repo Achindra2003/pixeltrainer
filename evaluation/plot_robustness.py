@@ -1,7 +1,7 @@
 """Robustness curve from the 8.7 sweep (task 8.7).
 
 Usage: python evaluation/plot_robustness.py
-Reads runs/jobs/agent_sim<level>[_norestore]_s<seed>.txt (runs/sweep_logs/queue.sh) and writes
+Reads runs/jobs/agent_sim<level>[_norestore]_s<seed>.txt (tools/sweep_queue.sh) and writes
 runs/robustness.txt (success, decisions, segments, screen-not-found per level x restoration) and
 runs/robustness.png (success rate vs degradation level, restoration on / off).
 """
