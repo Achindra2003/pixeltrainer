@@ -34,7 +34,7 @@ frame ─► [sim mode: localise ─► restore ─► rectify ─► quantise] 
 |---|---|---|
 | `emu.py` | RGBA screen to 4 shade indices | Sampling and quantisation (U1-T2) |
 | `perception/screen_state.py` | Small strided CNN on the full frame; hand-written baseline from 8×8 glyph matches | CNN; correlation (U1-T1) |
-| `perception/grid.py`, `tiles.py` | Frame split into a 9×10 grid of 16×16 cells; exact cell-hash lookup | Neighbourhoods (U1-T2) |
+| `perception/grid.py`, `tiles.py` | Frame split into a 9×10 grid of 16×16 cells; exact cell-hash lookup; small CNN per cell (3 conv layers, ±1 px shift and noise augmentation) | Neighbourhoods (U1-T2); CNN |
 | `perception/npc.py` | Connected components of the darkest shade as candidates, masked NCC against RAM-labelled templates, IoU de-duplication | Connectivity (U1-T2); correlation (U1-T1) |
 | `mapping/registration.py` | Phase correlation (FFT), with the pressed direction as a prior | Fourier transform (U2-T2) |
 | `mapping/worldmap.py` | Segments, mosaic by translation, wall marking from blocked moves, relocalisation by rare cell keys | Geometric transforms (U1-T2) |
@@ -77,7 +77,9 @@ Drift counts slips of the agent's map position against RAM within one map segmen
 |---|---|---|---|
 | Screen state, CNN | accuracy (16,432 frames) | ≥ 99% | **99.49%**, 1.50 ms/frame |
 | Screen state, heuristic | accuracy | — | 95.36%, 0.52 ms/frame (misses battle frames without the HUD) |
-| Tiles, lookup | walkable/blocked vs RAM collision | ≥ 98% | 100% of the 97.6% of cells found |
+| Tiles, lookup | walkable/blocked vs RAM collision (266,883 cells) | ≥ 98% | 100% of the 97.6% of cells found |
+| Tiles, CNN | walkable/blocked vs RAM collision; class vs labels | ≥ 98% | **100%** of all cells (also the 2.4% the lookup misses); class 100% |
+| Tiles, unseen area | CNN walkable vs RAM (43,221 cells north of Viridian) | — | **89.97%** (Route 2 100%, Forest gate 88.8%, Viridian Forest 83.6%); lookup finds only 37.0% |
 | Map position | error vs RAM (all 20 runs, 12,212 frames) | 0 drift | **0 tiles** on every frame; same with CNN screen states |
 | Registration | correct steps (10,770 pairs) | 100% | phase correlation 10,766; with direction prior **10,770** |
 | NPC detection | precision / recall / facing | ≥ 95% | **100% / 97.5% / 99.1%** |
@@ -144,7 +146,7 @@ At level 1 restoration keeps the agent close to its clean behaviour. Without it,
 - **NPC in tall grass.** All 9 test misses are one NPC whose lower half is hidden by grass (NCC 0.74 against the 0.8 threshold).
 - **Blackouts** warp the player to a place not yet seen, which starts a map segment that is never merged with the old one.
 - **One route.** Only Pallet Town → Viridian City is evaluated; Route 1 has only Pidgey and Rattata, so the type-aware policy is never tested against a type advantage.
-- **Tile labels.** PENDING (task 2.8): the tile lookup uses RAM-derived labels until the hand labelling is done.
+- **Tile labels and unseen tiles.** The 101 cell labels were checked from images by Claude at the user's request, not by hand in the labelling tool (3 of the RAM-based guesses changed). The tile CNN learns from those 101 cells only. In Viridian Forest, 95% of its walkable errors (4,109 of 4,336) are one unseen cell, the dark diagonal edge of the tree canopy, read as a door. The agent uses the lookup; the CNN is evaluated, not wired in.
 
 ## 8. Future work
 
