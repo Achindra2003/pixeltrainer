@@ -4,6 +4,7 @@
 <p class="sub">PixelTrainer — A Vision-Only Agent that Plays Pokémon Red</p>
 <p>Achindra Sharma — 2547105 (Individual Submission)</p>
 <p>4MCA A</p>
+<p>Repository: <a href="https://github.com/Achindra2003/pixeltrainer">github.com/Achindra2003/pixeltrainer</a></p>
 </div>
 
 PixelTrainer is a program that plays Pokémon Red by **looking at the screen**, the way a person does. Every frame goes through a computer-vision pipeline that answers a few questions: what kind of screen is this, where can I walk, where am I, who is in the way, which Pokémon am I fighting, and have I reached the goal? Then the program presses one button. It starts in Pallet Town, walks north through Route 1, fights the wild battles on the way, and stops when it sees the Viridian City Poké Center sign.

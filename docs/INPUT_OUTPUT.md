@@ -4,6 +4,7 @@
 <p class="sub">PixelTrainer — A Vision-Only Agent that Plays Pokémon Red</p>
 <p>Achindra Sharma — 2547105 (Individual Submission)</p>
 <p>4MCA A</p>
+<p>Repository: <a href="https://github.com/Achindra2003/pixeltrainer">github.com/Achindra2003/pixeltrainer</a></p>
 </div>
 
 Every figure below was produced by the project code (`python tools/make_figures.py`) from a real run (seed 0) or from unseen test runs 15–19. In each figure the **input image is on the left and the output on the right**. The full explanation and justification of each figure is in the User Manual, Section 5. A video of one whole episode is submitted alongside this file as `demo.mp4`.
