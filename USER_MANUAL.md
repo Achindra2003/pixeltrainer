@@ -7,24 +7,27 @@
 <p>Repository: <a href="https://github.com/Achindra2003/pixeltrainer">github.com/Achindra2003/pixeltrainer</a></p>
 </div>
 
-PixelTrainer is a program that plays Pokémon Red by **looking at the screen**, the way a person does. Every frame goes through a computer-vision pipeline that answers a few questions: what kind of screen is this, where can I walk, where am I, who is in the way, which Pokémon am I fighting, and have I reached the goal? Then the program presses one button. It starts in Pallet Town, walks north through Route 1, fights the wild battles on the way, and stops when it sees the Viridian City Poké Center sign.
+## About the project
 
-The program never reads the game's memory. **Its only input is the screen image.**
+Most game-playing bots cheat a little. They read the game's memory, so they know exactly where the player is, what the map looks like and how much HP the enemy has. I wanted to build one that doesn't. **PixelTrainer plays Pokémon Red only by looking at the screen**, the same way a person does, so every piece of information it uses has to come from computer vision.
 
-Contents
+The task I set it is the first real journey in the game. It starts in Pallet Town, walks north through Route 1, fights the wild Pokémon that jump out of the grass, and stops when it sees the Poké Center sign in Viridian City. For every frame the program asks itself a few questions:
 
-1. Installation
-2. Running the program
-3. Explanation of the code
-4. The input image and why it is necessary
-5. Output images, with justification
-6. Troubleshooting
+- What kind of screen is this: the map, a battle, a dialogue box or a menu?
+- Where can I walk, and where am I?
+- Is anyone standing in my way?
+- If I'm in a battle, which Pokémon am I fighting and which move should I use?
+- Have I reached the goal yet?
+
+Each answer comes from an image processing technique we covered in class. Once all of them are answered, the program presses one button and the loop starts again.
+
+This manual covers how to install and run the program (Sections 1–2), how the code works (Section 3), why the input image is so important (Section 4), and what each output image shows and why it is correct (Section 5).
 
 ---
 
 ## 1. Installation
 
-Requirements: Windows 10/11, Python 3.11, and your own copy of the Pokémon Red ROM (not included, for copyright reasons).
+You need Windows 10 or 11, Python 3.11 and your own copy of the Pokémon Red ROM. I can't include the ROM for copyright reasons.
 
 ```powershell
 python -m venv --system-site-packages .venv
@@ -34,35 +37,34 @@ copy <your dump>.gb roms\pokered.gb
 .\.venv\Scripts\python -m pytest -q            # 47 tests, all should pass
 ```
 
-The trained models are `models/screen_state.pt` and `models/tiles.pt`. If they are missing (for example, in a fresh git clone), train them first: `python tools/train_screen_state.py` and `python tools/train_tiles.py`.
+The two trained models are `models/screen_state.pt` and `models/tiles.pt`. They come with the submitted zip. On a fresh clone from GitHub they are missing, and you can retrain them with `python tools/train_screen_state.py` and `python tools/train_tiles.py`.
 
 ## 2. Running the program
 
-All commands run from the project folder with the virtual environment's Python (`.\.venv\Scripts\python`).
+Run every command from the project folder, using the virtual environment's Python (`.\.venv\Scripts\python`).
 
-| What | Command | What you get |
+| What you want | Command | What you get |
 |---|---|---|
 | Watch the agent play | `python -m pixeltrainer.run` | A game window at normal speed |
-| Record a demo video | `python -m pixeltrainer.run --headless --record runs/demo.mp4` | `runs/demo.mp4`: the game on the left; the agent's map, plan and decision on the right |
-| Change the seed or battle policy | `--seed 3 --policy greedy` (policies: `random`, `greedy`, `type`) | A different episode (wild encounters change with the seed) |
-| Make the manual's figures | `python tools/make_figures.py` | `docs/figures/fig1…fig9.png` |
-| Full evaluation | `python evaluation/run_eval.py --out runs/eval/final`, then `python evaluation/report.py runs/eval/final` | Tables for 20 seeds × 3 policies |
-| Camera-like input | `python evaluation/run_eval.py --input sim:1 --seeds 0-2` | The same agent on degraded "photos" of the screen |
+| Record a demo video | `python -m pixeltrainer.run --headless --record runs/demo.mp4` | A video with the game on the left and the agent's map, plan and decisions on the right |
+| Try a different run | `--seed 3 --policy greedy` (policies: `random`, `greedy`, `type`) | A different episode, because the wild encounters change with the seed |
+| Regenerate the figures | `python tools/make_figures.py` | `docs/figures/fig1…fig9.png` |
+| Full evaluation | `python evaluation/run_eval.py --out runs/eval/final`, then `python evaluation/report.py runs/eval/final` | Result tables for 20 seeds × 3 policies |
+| Camera-style input | `python evaluation/run_eval.py --input sim:1 --seeds 0-2` | The same agent playing from degraded "photos" of the screen |
 
-When an episode ends, the console prints one line, for example:
+When an episode ends, the console prints a one-line summary, for example:
 
 ```
 landmark seen after 133 decisions, 2 map segments, watchdog {}
 ```
 
-- `landmark seen` means the goal was reached (`budget used up` means it was not).
-- `decisions` is the number of buttons pressed.
-- `map segments` is the number of separate map pieces the agent built.
-- `watchdog` counts how many times the agent got stuck and pressed a random button (here, 0).
+This means the agent reached the goal after pressing 133 buttons. It built 2 separate pieces of map on the way, and it never got stuck (the watchdog never had to step in). If the goal is not reached in time, the line says `budget used up` instead.
 
 ## 3. Explanation of the code
 
-### 3.1 Folder layout
+### 3.1 How the project is organised
+
+I split the code by job. Everything the agent uses lives in `pixeltrainer/`. Anything that is allowed to look at the game's real memory, for scoring and labelling, is kept separate in `evaluation/`.
 
 ```
 pixeltrainer/            the agent: sees pixels only
@@ -89,9 +91,9 @@ tools/                   training, labelling and figure scripts
 tests/                   47 unit tests; test_ram_boundary.py fails if the agent reads RAM
 ```
 
-### 3.2 One decision, step by step
+### 3.2 What happens in one decision
 
-The main loop is `run()` in `pixeltrainer/agent.py`. Each pass of the loop is one decision:
+The main loop is `run()` in `pixeltrainer/agent.py`. Each time round the loop, the agent looks at one frame and presses one button:
 
 ```
 frame ─► [camera mode: localise ─► restore ─► rectify ─► quantise]
@@ -103,79 +105,75 @@ frame ─► [camera mode: localise ─► restore ─► rectify ─► quantis
       ─► button pressed ─► emulator runs until the screen is still ─► next frame
 ```
 
-1. **Get the frame.** `Emu.frame()` returns a 144×160 array of shade indices 0–3 (0 = white, 3 = black). In camera mode, the frame is first a simulated photograph, and `capture/` turns it back into this array (Section 4.3).
-2. **Classify the screen** (`perception/screen_state.py`). A small CNN (4 strided convolution layers and 3×3 adaptive pooling) labels the frame overworld, battle, dialogue, menu or transition. The label decides which part of the pipeline runs next. A hand-written baseline (`heuristic`) matches 8×8 glyphs at fixed places, such as the battle HUD corners and the text-box border.
-3. **Overworld: read the tiles** (`perception/grid.py`, `tiles.py`). The frame is cut into a 9×10 grid of 16×16 cells. `lookup` hashes each cell's exact pixels and looks the hash up in a table of 101 labelled cells: walkable, wall, grass, water, door, ledge or sign. A small CNN per cell (`tiles.cnn`) is the learned alternative. It is trained with ±1 px shifts and noise, so it also labels cells the table has never seen.
-4. **Overworld: find people** (`perception/npc.py`).
-   - Connected components of the darkest shade give candidate 16×16 boxes.
-   - Each box is compared with sprite templates by masked normalised cross-correlation (NCC).
-   - Overlapping hits are removed by IoU.
-   - A detected person's cell counts as blocked, but only for a while, because people move.
-5. **Overworld: update the map** (`mapping/registration.py`, `worldmap.py`).
-   - One step scrolls the screen by exactly 16 px. `registration.step` finds the move (0, 1 or 2 cells in the pressed direction) by mean absolute difference.
-   - When the frames are too noisy, it falls back to phase correlation (FFT).
-   - A move of 0 px after a walk means the target cell is a wall.
-   - Each frame is pasted into a mosaic at its offset, so the agent knows its own position without reading memory.
-6. **Overworld: check the goal** (`perception/landmark.py`). The agent matches a template of the Poké Center sign (`cv2.matchTemplate`, normalised correlation). A score of 0.9 or more means the goal is reached, and the episode ends.
-7. **Overworld: plan** (`planning/explore.py`, `astar.py`).
-   - Region growing from the player's cell finds every reachable cell.
-   - The frontier is the set of unknown cells next to the reachable region. Walking there reveals more map.
-   - Each frontier cell is scored as progress towards the goal direction (north) minus 0.5 × its path distance. The best one is the target.
-   - A* with a Manhattan heuristic plans the path. The first step of the path is the button to press.
-8. **Battle** (`perception/battle.py`, `ocr.py`, `policy/battle_policy.py`).
-   - OCR of 8×8 glyphs reads the menu type and the cursor position.
-   - On the fight menu, the agent reads its moves and identifies the enemy species: NCC against all 151 front sprites.
-   - The policy picks the move with the highest expected damage: power × same-type bonus × type effectiveness × accuracy.
-   - HP bars are read as the fraction of filled pixels.
-9. **Watchdog.** If nothing changes for 8 decisions, the agent presses a random button to get unstuck.
+Here is each step in plain words.
 
-### 3.3 Course topics used
+1. **Grab the frame.** `Emu.frame()` gives a 144×160 image in which every pixel is one of four shades, 0 (white) to 3 (black). In camera mode the input is a simulated photo instead, and the `capture/` module first turns it back into this clean form (Section 4.3).
 
-Every topic taught so far (Units 1 and 2, and Unit 3 Topic 1) is listed below with where it is used in the code. Methods in the agent's own loop are marked **(agent)**. The others are used in the camera-mode pipeline or in measured comparisons, which pick the method the agent uses.
+2. **Work out what kind of screen it is** (`perception/screen_state.py`). This decides everything that follows, because walking logic is useless in a battle and battle logic is useless on the map. I trained a small CNN (four convolution layers) to sort each frame into overworld, battle, dialogue, menu or transition. I also wrote a simple hand-made version that checks for fixed patterns, like the corners of the battle display, so I could compare the two.
 
-| Syllabus topic | Where in the code | How it is used |
+3. **Figure out where it can walk** (`perception/grid.py`, `tiles.py`). The game world is made of 16×16 tiles, so I cut the frame into a 9×10 grid of cells. The fast method takes a fingerprint (hash) of each cell's pixels and looks it up in a table of 101 cells I labelled: walkable, wall, grass, water, door, ledge or sign. As a backup I also trained a small CNN on single cells. It still gives an answer when a cell looks slightly different from anything in the table.
+
+4. **Spot other people** (`perception/npc.py`). Character sprites have dark outlines, so I first group touching dark pixels together (connected components) to get candidate boxes. Each box is then compared against the character templates using normalised cross-correlation (NCC). A person's cell is treated as blocked, but only for a while, because people walk around.
+
+5. **Keep track of position and build a map** (`mapping/registration.py`, `worldmap.py`). The agent never reads its coordinates from memory, so it has to work them out. Every step scrolls the screen by exactly 16 pixels. By comparing the new frame with the previous one, the agent can tell whether it moved 0, 1 or 2 cells. When the frames are too noisy for a direct comparison, it falls back to phase correlation, which uses the Fourier transform. If it pressed a direction and moved 0 pixels, it walked into a wall. Each frame is then pasted into a growing map at the right offset.
+
+6. **Check whether it has arrived** (`perception/landmark.py`). The agent compares the screen against a template of the Poké Center sign. If the match score is 0.9 or higher, the goal is reached and the episode ends.
+
+7. **Decide where to go** (`planning/explore.py`, `astar.py`). Starting from the player's cell, region growing marks every cell the agent can reach. The unknown cells along the edge of that region (the "frontier") are where new map gets revealed. The agent scores each frontier cell by how far north it is, minus a cost for how far away it is, and picks the best one. A* search with Manhattan distance then finds the path, and the first step of that path is the button to press.
+
+8. **Fight battles** (`perception/battle.py`, `ocr.py`, `policy/battle_policy.py`). The agent reads the menu text with OCR, so it knows which menu is open and where the cursor is. It identifies the enemy Pokémon by matching the sprite against all 151 front sprites, and reads both HP bars by counting filled pixels. It then picks the move with the highest expected damage: power × same-type bonus × type effectiveness × accuracy.
+
+9. **Get unstuck.** If nothing on screen changes for 8 decisions, a watchdog presses a random button. It is a safety net for the rare cases where the agent gets stuck.
+
+### 3.3 How the course topics fit in
+
+When I planned the project, I tried to use the topics we covered in class wherever they actually solved a problem, rather than adding them just to tick boxes. The table below goes through every topic taught so far (Units 1 and 2, and Unit 3 Topic 1) and shows where it appears. Rows marked **(agent)** run while the agent is playing. The others are in the camera-mode pipeline, or in experiments I ran to choose the best method.
+
+| Syllabus topic | Where in the code | How I used it |
 |---|---|---|
-| **U1-T1** Simple image formation model | `evaluation/degrade.py`, `capture/restore.py` | A camera photo is modelled as g = h ∗ f + η (blur h, noise η). Uneven light multiplies the image (illumination × reflectance), so `flatten_light` divides it out. |
-| U1-T1 Types of digital images | `emu.py`, `capture/` | RGBA emulator screen, then grey, then 4-level indexed image **(agent)**, plus binary masks (screen mask, dark-pixel mask). |
-| U1-T1 Correlation and convolution | `perception/npc.py`, `battle.py`, `ocr.py`, `landmark.py`; `capture/restore.py`; CNNs | Template matching by normalised cross-correlation **(agent)**. Convolution in every spatial filter and in the CNN layers **(agent)**. |
-| U1-T1 Fundamental steps / elements of an IP system | whole pipeline (Section 3.2) | Acquisition (emulator or photo), preprocessing (restore), segmentation (tiles, NPCs), recognition (species, OCR, landmark), interpretation (policy). |
-| **U1-T2** Sampling and quantisation; resolution | `emu.py`, `capture/quantise.py`, `capture/rectify.py` | 4 grey levels mapped to shade indices **(agent)**. A photo is re-sampled back to 160×144 at pixel centres. |
-| U1-T2 Neighbours and connectivity | `perception/npc.py`, `perception/grid.py`, `planning/explore.py` | 8-connected components of dark pixels give NPC candidates. 4-neighbour moves are used for the grid and the paths **(agent)**. |
-| U1-T2 Distance measures | `planning/astar.py`, evaluation | Manhattan (city-block) distance is the A\* heuristic **(agent)**. Euclidean distance measures corner error. |
-| U1-T2 Colour models | `capture/localise.py`, `restore.py` | BGR to grey conversion. Chromaticity (colour ÷ background model) separates the grey screen from coloured clutter. |
-| U1-T2 Geometric transformations | `mapping/worldmap.py`, `capture/rectify.py` | Translation to paste frames into the map **(agent)**. Perspective warp to straighten a tilted photo. |
-| **U2-T1** Grey-level transforms, point operations | `capture/restore.py`, `quantise.py` | Gamma correction. Multi-level thresholding into 4 shades. |
-| U2-T1 Histogram processing and equalisation | `capture/quantise.py`, `restore.py` | Thresholds at the valleys of the log-histogram. Histogram equalisation and CLAHE are compared. |
-| U2-T1 Degradation/restoration process; noise models | `evaluation/degrade.py` | Gaussian, salt-and-pepper and Poisson noise; defocus and motion blur; gamma; uneven light; colour cast; moiré. Levels 1 to 4. |
-| U2-T1 Restoration in the presence of noise | `capture/restore.py` | Median and adaptive median filters; averaging of several frames. |
-| U2-T1 Smoothing and sharpening spatial filters | `capture/restore.py` | Mean, Gaussian and median filters; unsharp masking; Laplacian sharpening. |
-| **U2-T2** Fourier transform | `mapping/registration.py` | Phase correlation finds the shift between frames **(agent fallback)**. |
-| U2-T2 Frequency-domain smoothing, sharpening and filters | `capture/restore.py` | Gaussian and Butterworth low-pass filters; FFT notch filter for moiré; Wiener deconvolution (in the camera chain). |
-| U2-T2 Wavelets | `capture/restore.py` (`wavelet_denoise`) | 2-level Haar DWT with soft thresholding of the detail bands (BayesShrink). |
-| **U3-T1** Local and global features | `perception/tiles.py`, `screen_state.py`, `quantise.py` | Local: one 16×16 cell or one sprite. Global: the whole-frame layout and the histogram. |
-| U3-T1 Feature detection, description and matching | `perception/tiles.py`, `npc.py`, `battle.py` | Each cell is described by a hash of its pixels and matched in a table **(agent)**. Sprites and glyphs are matched by NCC **(agent)**. |
-| U3-T1 Point, line and edge detection | `capture/localise.py` | Sobel gradient edges, Hough lines and line intersection find the screen corners in a photo. |
-| U3-T1 Thresholding | `capture/quantise.py`, `localise.py`; detection scores | Histogram-valley thresholds. Threshold on the background difference. Score thresholds (NPC 0.8, landmark 0.9) **(agent)**. |
-| U3-T1 Region growing | `planning/explore.py` | Grows the reachable region from the player's cell, and its border is the frontier **(agent)**. |
-| U3-T1 Region splitting and merging | not used | It isn't needed. The game image already has a fixed 16×16 grid, so the "split" is given by the grid, and region growing does the merging. |
-| CNN (promised in the synopsis) | `perception/screen_state.py`, `tiles.py` | Small CNNs classify the screen state and the tile classes **(agent)**. |
+| **U1-T1** Simple image formation model | `evaluation/degrade.py`, `capture/restore.py` | I model a camera photo as g = h ∗ f + η (blur h, noise η). Uneven lighting multiplies the image (illumination × reflectance), so `flatten_light` divides it back out. |
+| U1-T1 Types of digital images | `emu.py`, `capture/` | The emulator's colour screen becomes greyscale, then a 4-level indexed image **(agent)**. Binary masks mark the screen and the dark pixels. |
+| U1-T1 Correlation and convolution | `perception/npc.py`, `battle.py`, `ocr.py`, `landmark.py`; `capture/restore.py`; CNNs | Template matching by normalised cross-correlation **(agent)**. Convolution in every spatial filter and inside the CNN layers **(agent)**. |
+| U1-T1 Fundamental steps of image processing | the whole pipeline (Section 3.2) | Acquisition (emulator or photo), preprocessing (restoration), segmentation (tiles, people), recognition (species, text, sign), then interpretation (the decision). |
+| **U1-T2** Sampling, quantisation and resolution | `emu.py`, `capture/quantise.py`, `capture/rectify.py` | The 4 grey levels become shade indices **(agent)**. A photo is re-sampled back to the 160×144 screen resolution. |
+| U1-T2 Neighbours and connectivity | `perception/npc.py`, `perception/grid.py`, `planning/explore.py` | 8-connected components find dark sprite outlines. 4-neighbour moves are used on the grid and in path planning **(agent)**. |
+| U1-T2 Distance measures | `planning/astar.py`, evaluation | Manhattan (city-block) distance guides A\* **(agent)**. Euclidean distance measures how far off the detected corners are. |
+| U1-T2 Colour models | `capture/localise.py`, `restore.py` | Colour to greyscale conversion. The colour relative to the background tells the grey screen apart from coloured clutter around it. |
+| U1-T2 Geometric transformations | `mapping/worldmap.py`, `capture/rectify.py` | Translation places each frame on the map **(agent)**. A perspective warp straightens a tilted photo. |
+| **U2-T1** Grey-level transforms and point operations | `capture/restore.py`, `quantise.py` | Gamma correction. Multi-level thresholding back into 4 shades. |
+| U2-T1 Histogram processing and equalisation | `capture/quantise.py`, `restore.py` | The 4 shades are separated at the valleys of the histogram. Histogram equalisation and CLAHE were tested too. |
+| U2-T1 Degradation, restoration and noise models | `evaluation/degrade.py` | Gaussian, salt-and-pepper and Poisson noise; defocus and motion blur; gamma; uneven light; colour cast; moiré. Four levels of strength. |
+| U2-T1 Restoration in the presence of noise | `capture/restore.py` | Median and adaptive median filters, and averaging several frames. |
+| U2-T1 Smoothing and sharpening spatial filters | `capture/restore.py` | Mean, Gaussian and median smoothing; unsharp masking and Laplacian sharpening. |
+| **U2-T2** Fourier transform | `mapping/registration.py` | Phase correlation measures how far the screen scrolled **(agent fallback)**. |
+| U2-T2 Frequency-domain filters | `capture/restore.py` | Gaussian and Butterworth low-pass filters, a notch filter for moiré, and Wiener deconvolution (used in the camera pipeline). |
+| U2-T2 Wavelets | `capture/restore.py` (`wavelet_denoise`) | A 2-level Haar wavelet transform with soft thresholding of the detail bands (BayesShrink) to remove noise. |
+| **U3-T1** Local and global features | `perception/tiles.py`, `screen_state.py`, `quantise.py` | Local: a single 16×16 cell or one sprite. Global: the layout of the whole frame, and its histogram. |
+| U3-T1 Feature detection, description and matching | `perception/tiles.py`, `npc.py`, `battle.py` | Each cell is described by a hash of its pixels and matched against a table **(agent)**. Sprites and letters are matched by NCC **(agent)**. |
+| U3-T1 Point, line and edge detection | `capture/localise.py` | Sobel edges, Hough lines and line intersections find the four corners of the screen in a photo. |
+| U3-T1 Thresholding | `capture/quantise.py`, `localise.py`; detection scores | Histogram-valley thresholds, a threshold on difference from the background, and match-score thresholds (0.8 for people, 0.9 for the sign) **(agent)**. |
+| U3-T1 Region growing | `planning/explore.py` | Grows the reachable area out from the player's cell. Its border is the frontier **(agent)**. |
+| U3-T1 Region splitting and merging | not used | I didn't need it. The game image already comes split into a fixed 16×16 grid, and region growing does the merging. |
+| CNN (from my synopsis) | `perception/screen_state.py`, `tiles.py` | Two small CNNs classify the screen type and the tile types **(agent)**. |
 
-The restoration methods are compared in `evaluation/eval_restore.py` (PSNR, SSIM and shade accuracy for each method × degradation type). The comparison chose flatten-light + Wiener as the camera chain. Wavelet shrinkage gives the best single-photo SSIM on Gaussian noise (0.914 → 0.933) and Poisson noise (0.771 → 0.808). It is not in the chain, because quantisation already gets 99–100% of shades right on those noise types.
+To choose the restoration methods for camera mode, I tested every filter against every type of degradation in `evaluation/eval_restore.py`, measuring PSNR, SSIM and the share of pixels that end up with the right shade. The best combination was "flatten the lighting, then Wiener deconvolution", so that is what the agent uses. Wavelet denoising was interesting: it gave the best SSIM of any single-photo method on Gaussian noise (0.914 → 0.933) and Poisson noise (0.771 → 0.808). I still left it out of the chain, because quantisation already gets 99–100% of the shades right on those noise types, so it wouldn't change what the agent sees.
 
-### 3.4 How the code was checked
+### 3.4 How I checked the code
 
-- The game's memory (RAM) is read only by `evaluation/`, for two jobs: labelling training data offline (runs 0–14) and scoring the agent.
-- Test numbers come from runs 15–19, which were never used in training.
-- `tests/test_ram_boundary.py` fails if any agent module touches the emulator's memory.
+Because the whole point of the project is "pixels only", I needed to be sure the agent never cheats. I kept the testing honest in three ways:
 
-The headline numbers are in `REPORT.md`:
-- 60/60 episodes reached Viridian City
-- screen state 99.49%
-- tiles 100%
-- NPC precision 100% and recall 97.5%
-- species 100%
-- HP error 0.63%
-- map position error 0 tiles
+- Only the `evaluation/` code reads the game's memory. It uses it for two things: labelling training data offline (recorded runs 0–14), and checking the agent's answers afterwards.
+- All the accuracy numbers come from runs 15–19, which were never used for training.
+- `tests/test_ram_boundary.py` fails automatically if any agent module touches the emulator's memory.
+
+The main results (full tables in `REPORT.md`):
+- the agent reached Viridian City in **60 out of 60** episodes
+- screen type correct 99.49% of the time
+- tiles 100% correct
+- people found with 100% precision and 97.5% recall
+- enemy species 100% correct
+- HP bars within 0.63% on average
+- map position error of 0 tiles
 
 ---
 
@@ -185,180 +183,160 @@ The headline numbers are in `REPORT.md`:
 
 ![Figure 1 — The input: one 160×144 Game Boy frame, 4 grey shades, on a fixed 16×16 cell grid.](docs/figures/fig1_input.png)
 
-The input is **one 160×144 Game Boy frame per decision**, with nothing else alongside it.
-- `Emu.frame()` maps the emulator's 4 grey levels (255, 153, 85, 0) to shade indices 0, 1, 2, 3 (Fig 1, middle).
-- The histogram (Fig 1, right) has exactly four bars and no values in between. A clean frame is therefore exact: the same tile always gives the same pixels.
+The agent gets **one 160×144 Game Boy frame per decision, and nothing else**. The emulator draws the screen in four grey levels (255, 153, 85 and 0), and `Emu.frame()` maps them to shade numbers 0 to 3 (Figure 1, middle). The histogram on the right has exactly four bars and nothing in between. That tells us a clean frame has no noise at all: the same tile always produces exactly the same pixels.
 
-Three properties of this image make the whole pipeline possible:
+Three properties of this image are what make the whole project possible:
 
-1. **A fixed 16×16 grid.** The map is built from 16×16 cells, and the camera follows the player. The frame is therefore always a 9×10 grid aligned at (0, 0) (red lines in Fig 1), and the player is always in cell (row 4, column 4) (blue box). Tile classification, NPC boxes and map positions are all done per cell.
-2. **Exact shades.** With exactly 4 shades and no noise, a cell's pixels can be hashed and looked up, and template matching scores reach 1.00 on a true match (Figs 4, 7, 8).
-3. **Exact scrolling.** A step moves the image by exactly 16 px. Registration can therefore turn two frames into a move of whole cells (Fig 5).
+1. **It sits on a fixed grid.** The game world is built from 16×16 tiles and the camera follows the player. So the frame is always a 9×10 grid of cells lined up at the top-left corner (red lines in Figure 1), and the player is always in the same cell, row 4, column 4 (blue box). This is why I can classify tiles, place people and track position one cell at a time.
+2. **The shades are exact.** With only 4 shades and no noise, a cell's pixels can be used as a fingerprint and looked up directly. Template matches also score a perfect 1.00 when they are right (Figures 4, 7 and 8).
+3. **Scrolling is exact.** One step moves the image by exactly 16 pixels, so comparing two frames tells the agent precisely how many cells it moved (Figure 5).
 
-### 4.2 Why the image is necessary (and why nothing else is used)
+### 4.2 Why the image is necessary
 
-- **It is the only information the agent has.** The project rule is "pixels only". The game's memory holds the player's position, the map, the enemy and its HP, but the agent may not read it (Section 3.4). Every fact the agent uses is therefore measured from the image:
-  - where the player is, by registration of consecutive frames
-  - what is walkable, from the tile classes
-  - who is in the way, by NPC detection
-  - what to attack, by species and OCR
-  - when to stop, from the landmark
-- **Each stage needs a specific part of the image:**
+**The image is the only information the agent has.** The game's memory knows where the player is, what the map looks like and how much HP the enemy has, but my rule for this project is that the agent may not read any of it (Section 3.4). Every fact it uses has to be measured from the screen:
 
-  | Stage | Part of the image it needs | Without it |
-  |---|---|---|
-  | Screen state | the whole frame (layout: HUD, text box, black fade) | The agent would not know whether to walk, fight or press A |
-  | Tiles | each 16×16 cell | No walkable/blocked map, so no path |
-  | NPCs | dark sprite pixels and their shapes | The agent would walk into people and treat them as walls |
-  | Registration | two consecutive frames | No position, so no map |
-  | Battle | sprite box (56×56), HP bar rows, text rows | Unknown enemy, unknown moves, so no choice of attack |
-  | Landmark | the sign's pixels | The agent would never know it had arrived |
+- where it is, by comparing consecutive frames
+- where it can walk, from the tile classes
+- who is in the way, by detecting people
+- what it is fighting and which moves it has, by sprite matching and OCR
+- when to stop, by spotting the sign
 
-- **The frame must be still.** Before the agent decides, the emulator runs until no new screen appears for 8 frames and the screen is not blank (`Emu.wait_until_stable`). A frame caught mid-scroll would break the 16-px grid.
+Each part of the pipeline relies on a different part of the image. If that part were missing, the agent would lose a specific ability:
 
-### 4.3 The second input: a simulated camera photo
+| Stage | Part of the image it needs | What goes wrong without it |
+|---|---|---|
+| Screen type | the whole frame (battle display, text box, black fade) | The agent wouldn't know whether to walk, fight or press A |
+| Tiles | each 16×16 cell | No map of walkable cells, so no path |
+| People | dark sprite pixels and their shapes | The agent would walk into people, or treat them as permanent walls |
+| Position | two frames in a row | No idea where it is, so no map |
+| Battle | the enemy sprite box (56×56), HP bar rows, text rows | Unknown enemy and unknown moves, so no sensible attack |
+| Goal | the sign's pixels | The agent would never know it had arrived |
+
+The frame also has to be **still**. Before each decision, the emulator keeps running until the screen hasn't changed for 8 frames and isn't blank (`Emu.wait_until_stable`). A frame caught halfway through a scroll would break the 16-pixel grid that everything depends on.
+
+### 4.3 A second input: a simulated camera photo
 
 ![Figure 9 (input column) — the second input: a simulated camera photo of the screen.](docs/figures/fig9_capture.png)
 
-A clean screen grab needs no image restoration. To make the taught restoration methods do real work, the program can also take a **simulated photograph of the screen** (`--input sim:<level>`, `evaluation/degrade.py`).
-- The photo follows the model `g = h * f + η`.
-- The screen is tilted onto a cluttered background, blurred (h), lit unevenly, colour-cast, overlaid with moiré, and given noise (η).
-- Levels 1–4 increase every degradation.
+A perfect screen capture doesn't need any restoration, so on its own it wouldn't give the restoration topics from Unit 2 anything to do. To make them do real work, I added a mode where the agent sees a **simulated photograph of the screen** instead (`--input sim:<level>`, made by `evaluation/degrade.py`). The photo follows the degradation model from class, `g = h * f + η`. The screen is tilted and placed on a cluttered background, blurred, lit unevenly, given a colour cast and a moiré pattern, and finally has noise added. Levels 1 to 4 make each effect stronger.
 
-This input is necessary because it is the realistic case: a camera pointed at a real Game Boy. It cannot be handled by grid and hash methods directly, because the grid is tilted, the shades are no longer 4 values, and nothing repeats exactly. It needs four steps to become a clean frame again: localisation, restoration, rectification and quantisation (Section 5.8).
+This input matters because it is the realistic case: someone pointing a phone camera at a real Game Boy. The neat tricks from Section 4.1 stop working on it straight away. The grid is tilted, there are no longer exactly 4 shades, and nothing repeats pixel for pixel. The photo has to go through four steps to become a clean frame again: find the screen, restore it, straighten it, and reduce it back to 4 shades (Section 5.8).
 
-### 4.4 What makes a good or bad input
+### 4.4 Good and bad inputs
 
-| Input | Result |
+| Input | What happens |
 |---|---|
-| Clean emulator frame, still | Works (60/60 episodes) |
-| Simulated photo, level 1 (slight tilt, defocus, noise, colour cast) | Works (3/3 episodes with restoration) |
-| Simulated photo, level 2 and above (strong blur, gamma, uneven light, motion blur, moiré) | Fails: blur erases 1-px details, so shades cannot be recovered (Fig 9, bottom row) |
-| Frame taken during a scroll or fade | Not used: the program waits for a still frame |
-| A different game, or the Game Boy Color palette | Not supported: the templates and tile labels are for Pokémon Red's 4-shade palette |
+| Clean, still emulator frame | Works: 60/60 episodes |
+| Simulated photo, level 1 (slight tilt, slight blur, noise, colour cast) | Works: 3/3 episodes with restoration |
+| Simulated photo, level 2 and above (strong blur, gamma, uneven light, motion blur, moiré) | Fails: the blur wipes out 1-pixel details, so the shades can't be recovered (Figure 9, bottom row) |
+| Frame caught during a scroll or fade | Never used: the program waits for a still frame |
+| A different game, or the Game Boy Color palette | Not supported: the templates and tile labels are made for Pokémon Red's 4 shades |
 
 ---
 
 ## 5. Output images, with justification
 
-Every figure below is made by `python tools/make_figures.py` from a real run (seed 0) or from the unseen test runs. In each figure the input is on the left and the output on the right. Each section says how to read the figure, then explains why the output is correct.
+All the figures here were generated by `python tools/make_figures.py`, either from a real run (seed 0) or from the unseen test runs. In each one the input is on the left and the output on the right. For each figure I first say what it shows, then explain why I'm confident the output is correct.
 
-### 5.1 Screen state
+### 5.1 Screen type
 
 ![Figure 2 — Screen-state classification: one frame per class, with true label, CNN and heuristic output.](docs/figures/fig2_screen_state.png)
 
-**Shows.** Five frames from test run 18, one per class. Each has three labels: its true label (from the offline labels), the CNN's output and the heuristic's output. All five are correct.
+**What it shows.** One frame of each screen type, taken from test run 18. Above each frame are three labels: the true answer, the CNN's answer and the hand-made method's answer. All five are correct.
 
-**Justification.**
-- The screen state comes first because every later stage only makes sense on one kind of screen. Tile classes are meaningless in a battle, and OCR of a move list is meaningless on the map.
-- The classes look very different in the image: a full map, a HUD with sprites, a text box over the map, a text box over a menu, or a nearly uniform black or white fade. A CNN that keeps a 3×3 spatial layout separates them.
-- On 16,432 unseen frames, the CNN is right 99.49% of the time. The glyph heuristic is right 95.36% of the time, because it misses battle frames where the HUD has not appeared yet.
+**Why it's right.**
+- This stage has to come first, because every later stage only makes sense on one kind of screen. Looking for walkable tiles during a battle, or reading a move list while walking around, would just produce nonsense.
+- The five types look very different: a full map, a battle display with sprites, a text box over the map, a text box over a menu, or an almost plain black or white fade. That's why a small CNN can separate them so reliably.
+- On 16,432 frames it had never seen, the CNN was right 99.49% of the time. The hand-made method managed 95.36%. It mostly fails on the first frames of a battle, before the battle display has appeared.
 
-### 5.2 Tile classes
+### 5.2 Tile types
 
 ![Figure 3 — Tile classification per 16×16 cell: input frame, exact-hash lookup, CNN.](docs/figures/fig3_tiles.png)
 
-**Shows.** The Pallet Town start frame, its lookup labels (87 of 90 cells known) and its CNN labels (all 90 cells).
-- Green is walkable; red is wall (house, fence); cyan is the sign; amber is the door (CNN).
-- The player's cell is hatched in blue. Sprite cells are masked, because the sprite hides the ground.
+**What it shows.** The Pallet Town starting frame, then the lookup method's labels (87 of the 90 cells recognised), then the CNN's labels (all 90 cells). Green is walkable, red is a wall (the house and fence), cyan is the sign and amber is the door. The player's cell is hatched in blue and ignored, because the sprite covers the ground underneath.
 
-**Justification.**
-- The labels match what is visible: the house and fence are blocked; the path, grass edge and flower bed are walkable.
-- The lookup leaves 3 cells unknown (grey): the house door, the player's cell and an NPC clipped at the top-left edge. Sprites change a cell's pixels, so the exact hash misses. The CNN labels every cell, and it correctly calls the door a door.
-- On the unseen test runs (266,883 cells), both methods agree with the game's own collision data on 100% of cells. The lookup is exact but only finds 97.6% of cells; the CNN covers all of them.
-- One visible error: the CNN colours the NPC clipped at the top-left edge as wall. The NPC detector needs a whole sprite, so this half-visible one is not masked, and the CNN sees sprite pixels instead of ground. The cell is still correctly *blocked* (an NPC stands there), so the planner is not misled; it is a labelling limit, not a path error.
-- This walkable/blocked grid is what the planner searches, so a wrong label here would send the agent into a wall.
+**Why it's right.**
+- The labels match what you can see: the house and fence are blocked, and the path, grass edge and flower bed are walkable.
+- The lookup leaves 3 cells grey (unknown): the house door, the player's cell and a person cut off at the top-left edge. A sprite on top of a cell changes its pixels, so the fingerprint no longer matches the table. The CNN still labels all of them, and it correctly picks out the door.
+- On the unseen test runs (266,883 cells), both methods agreed with the game's own collision data on 100% of the cells they labelled. The lookup is exact but only recognises 97.6% of cells, while the CNN covers all of them.
+- There is one visible mistake. The CNN colours the half-visible person at the top-left as a wall. The people detector needs to see the whole sprite, so it misses this one, and the CNN ends up looking at sprite pixels instead of ground. The cell really is blocked, though, because someone is standing there, so the planner isn't misled. It's a labelling limit, not a path error.
+- This walkable/blocked grid is exactly what the planner searches, so getting it right matters: one wrong label would send the agent into a wall.
 
-### 5.3 NPC detection
+### 5.3 Finding people
 
 ![Figure 4 — NPC detection by template matching, with the detected facing direction.](docs/figures/fig4_npc.png)
 
-**Shows.** A Viridian City test frame with the detected person boxed in magenta. The label gives the facing (`left`) and the NCC score (1.00). The player in the centre is not reported, because the player is always masked.
+**What it shows.** A test frame from Viridian City, with the detected person boxed in magenta. The label gives the direction they are facing (`left`) and the match score (1.00). The player in the middle isn't reported, because the agent always ignores its own sprite.
 
-**Justification.**
-- An NPC is not a wall: it moves. The planner marks its cell as blocked with low confidence, so the agent steps around the person and tries the cell again later.
-- The NCC score of 1.00 means the box matches a template exactly. The detection threshold is 0.8.
-- On unseen test runs, detection has 100% precision, 97.5% recall and 99.1% correct facing. All 9 misses are one NPC whose lower half is hidden by tall grass (score 0.74).
+**Why it's right.**
+- A person isn't a wall, because they move. So the planner marks their cell as only temporarily blocked: the agent walks around them and tries again later.
+- A score of 1.00 means the box matches a template exactly. Anything above 0.8 counts as a detection.
+- On the unseen test runs, detection had 100% precision, 97.5% recall and got the facing direction right 99.1% of the time. All 9 misses were the same person standing in tall grass with the lower half of the sprite hidden (score 0.74).
 
-### 5.4 Registration (where am I?)
+### 5.4 Working out position
 
 ![Figure 5 — Registration: the frame is located on the world map by its pixel shift.](docs/figures/fig5_registration.png)
 
-**Shows.** Two frames before and after pressing **up**. The panels show:
-- the phase-correlation surface: one sharp peak at dx = 0, dy = +16 px, response 0.83
-- the result: a move of (0, −1) cells
-- the difference between frame t+1 and frame t shifted by 16 px
+**What it shows.** Two frames, before and after pressing **up**, followed by the phase-correlation result. It has one sharp peak at dx = 0, dy = +16 pixels (response 0.83), which means a move of (0, −1) cells. The last panel is the difference between the new frame and the old one shifted by 16 pixels.
 
-**Justification.**
-- The peak is exactly one cell (16 px) and opposite to the walk. When the player walks up, the content moves down, which matches the move pressed.
-- After alignment the difference image is black almost everywhere. What remains is the new row revealed at the top and the player sprite, which does not move on screen. Everything else lines up, so the shift is right.
-- Over 10,770 test steps, phase correlation alone was right 10,766 times; with the direction prior, all 10,770. This is why the map never drifted: the map position error against the game's memory was 0 tiles on 12,212 frames.
+**Why it's right.**
+- The peak is exactly one cell (16 px), in the opposite direction to the walk. That's what should happen: when the player walks up, the scenery scrolls down.
+- After lining up the two frames, the difference image is black almost everywhere. The only things left are the new row that scrolled in at the top, and the player sprite, which stays in the centre of the screen. Since everything else lines up, the shift must be right.
+- Over 10,770 test steps, phase correlation alone was right 10,766 times, and with the pressed direction as a hint it was right all 10,770 times. That's why the map never drifted: compared with the game's memory, the position error was 0 tiles across 12,212 frames.
 
-### 5.5 World map and plan
+### 5.5 The map and the plan
 
 ![Figure 6 — The built world map and the A* plan to the next frontier.](docs/figures/fig6_map_plan.png)
 
-**Shows.**
-- Left: the demo-video view at decision 80. The game is on one side; on the other is the agent's map, with the A* path in yellow and the frontier target in magenta.
-- Right: the final map of the last segment.
-- Walls are tinted red, doors green, and the player is boxed in blue.
+**What it shows.** On the left is the demo-video view at decision 80: the game on one side, and on the other the agent's own map with its planned path in yellow and its target in magenta. On the right is the final map of the last segment. Walls are tinted red, doors green, and the player is boxed in blue.
 
-**Justification.**
-- The map was built only by pasting registered frames at their offsets. It still shows Pallet Town, the fence line and Route 1 joined correctly, with no seams or doubled tiles. That is visible proof that registration is right.
-- The yellow path goes north through walkable cells and stays out of red cells, as the goal direction requires.
-- The agent made the trip in 133 decisions with 2 map segments, and the watchdog never fired. A new segment starts when a frame cannot be placed on any known segment, for example after walking through a door into a building.
+**Why it's right.**
+- The map was built purely by pasting frames at the positions registration gave them. Pallet Town, the fence line and Route 1 still join up correctly, with no seams or doubled tiles. That's visible proof that the position tracking works.
+- The yellow path heads north through walkable cells and avoids every red cell, which is what the goal direction asks for.
+- The agent made this trip in 133 decisions with 2 map segments, and the watchdog never had to step in. A new segment starts whenever a frame can't be placed on the existing map, for example after walking through a door into a building.
 
-### 5.6 Battle reading and choice
+### 5.6 Reading a battle
 
 ![Figure 7 — Battle reading: species (NCC), HP bars, menu text (OCR) and the chosen action.](docs/figures/fig7_battle.png)
 
-**Shows.**
-- Main menu: the enemy sprite box is read as **PIDGEY** with NCC 1.00, both HP bars read 100%, and the cursor is on FIGHT, so the agent presses A.
-- Fight menu: OCR reads the moves `['SCRATCH', 'GROWL']`. The policy explains its choice: "SCRATCH vs Pidgey: 1x -> exp 40".
+**What it shows.** On the main battle menu, the enemy is identified as **PIDGEY** (match score 1.00), both HP bars read 100%, and the cursor is on FIGHT, so the agent presses A. On the fight menu, OCR reads the moves `['SCRATCH', 'GROWL']`, and the agent prints its reasoning: "SCRATCH vs Pidgey: 1x -> exp 40".
 
-**Justification.**
-- The readings match the screen: the name printed at the top is PIDGEY, both bars are full, and the move list shows SCRATCH and GROWL.
-- SCRATCH is the right choice. GROWL does no damage, and SCRATCH (power 40, Normal type) is neutral (1×) against a Normal/Flying Pidgey.
-- On unseen tests: species 100% (716/716), HP bar mean error 0.63%, and OCR 99.99% on text actually drawn on screen.
+**Why it's right.**
+- Everything it read matches the screen: the name at the top says PIDGEY, both bars are full, and the move list shows SCRATCH and GROWL.
+- SCRATCH is the sensible choice. GROWL does no damage at all, and SCRATCH (power 40, Normal type) does normal (1×) damage to a Normal/Flying Pidgey.
+- On the unseen tests, the species was right 100% of the time (716/716), the HP bars were off by only 0.63% on average, and OCR read 99.99% of on-screen text correctly.
 
-### 5.7 Goal reached
+### 5.7 Reaching the goal
 
 ![Figure 8 — Goal reached: the Viridian City Poké Center sign is recognised.](docs/figures/fig8_landmark.png)
 
-**Shows.** The Poké Center sign template (left) and the last frame of the episode (right). The best match is boxed in green, with NCC 1.000, which is at least the 0.9 threshold. The agent stops.
+**What it shows.** The Poké Center sign template (left) and the last frame of the episode (right). The best match is boxed in green with a score of 1.000, which clears the 0.9 threshold, so the agent stops.
 
-**Justification.**
+**Why it's right.**
 - The box sits exactly on the "POKé" sign in the top-right corner.
-- The score of 1.000 means a pixel-exact match. The threshold of 0.9 leaves room for small differences but not for a different sign.
-- In the final evaluation, all 60 episodes (20 seeds × 3 battle policies) ended here.
+- A score of 1.000 means a pixel-perfect match. I set the threshold at 0.9 so small differences are still accepted, but a different sign wouldn't be.
+- In the final evaluation, all 60 episodes (20 seeds × 3 battle strategies) ended right here.
 
-### 5.8 Camera mode: from photo back to a frame
+### 5.8 Camera mode: turning a photo back into a frame
 
 ![Figure 9 — Camera mode: photo → localise → rectify → quantise back to a 4-shade frame.](docs/figures/fig9_capture.png)
 
-**Shows.** Each row runs one simulated photo through the four steps:
-1. Localise: the green outline is the screen found by background subtraction, Hough lines and edge refinement.
-2. Restore: flatten the lighting, then Wiener deconvolution with the blur σ chosen automatically.
-3. Rectify: warp the screen back to 160×144.
-4. Quantise: map back to 4 shades at the histogram valleys.
+**What it shows.** Each row takes one simulated photo through the four steps:
+1. **Find the screen.** The green outline comes from background subtraction, Hough lines and edge refinement.
+2. **Restore it.** Even out the lighting, then apply Wiener deconvolution, with the amount of blur estimated automatically.
+3. **Straighten it.** Warp the screen back to 160×144.
+4. **Reduce it to 4 shades** by splitting the histogram at its valleys.
 
-The last panel marks in white every pixel whose shade differs from the clean frame.
+The last panel marks in white every pixel that still ended up with the wrong shade.
 
-**Justification.**
+**Why it's right, and where it stops working.**
 
-- **Level 1 (top row): success.**
-  - The corners are found within 0.12 px.
-  - After restoration, 99.95% of pixels get the right shade, against 86.74% without it. Restoration removes almost all the errors; only a dozen isolated pixels stay wrong.
-  - Downstream, the tile hashes and templates match again, and the agent reaches Viridian in 3/3 seeds with restoration (2/3 without it).
-- **Level 2 (bottom row): failure, shown on purpose.**
-  - The corners are still found within 1.09 px.
-  - The stronger blur erases the 1-px details of the tiles, so quantisation recovers only 63.24% of shades, and the grass and walls disappear.
-  - Restoration cannot recover detail that the blur destroyed. Here it scores slightly lower than no restoration (68.75%).
-  - This is the real limit of the system: from level 2 up the agent fails (Section 7 of `REPORT.md`). Showing it explains why the level-1 output can be trusted and where the method stops working.
+- **Level 1 (top row) works.** The corners are found to within 0.12 pixels. After restoration, 99.95% of pixels get the right shade, compared with 86.74% without it, so restoration fixes almost every error and only about a dozen isolated pixels stay wrong. Because the frame is clean again, the tile fingerprints and templates match as normal, and the agent reaches Viridian in 3 out of 3 runs (only 2 out of 3 without restoration).
+- **Level 2 (bottom row) fails, and I've shown it on purpose.** The corners are still found to within 1.09 pixels, but the stronger blur wipes out the 1-pixel details of the tiles. Quantisation only recovers 63.24% of the shades, and the grass and walls disappear. Restoration can't bring back detail the blur has already destroyed; here it actually scores slightly worse than no restoration (68.75%). This is the real limit of my system: from level 2 upwards the agent can't play (Section 7 of `REPORT.md`). Including the failure shows where the method stops working, and why the level-1 result can be trusted.
 
 ### 5.9 Demo video
 
-`runs/demo.mp4` (made by `python -m pixeltrainer.run --headless --record runs/demo.mp4`) shows the whole episode at 4 decisions per second. Each frame has the same layout as Fig 6 (left): the game, the map growing as the agent explores, the planned path, and a status line with the decision number, screen state, button, map segment, and (in battles) the reason for each move.
+`runs/demo.mp4` is submitted alongside this manual. It shows a whole episode at 4 decisions per second, in the same layout as Figure 6 (left). You can watch the game, the agent's map filling in as it explores, its planned path, and a status line showing the decision number, screen type, button pressed, map segment and, during battles, the reason behind each move. I made it with `python -m pixeltrainer.run --headless --record runs/demo.mp4`.
 
 ---
 
@@ -366,8 +344,8 @@ The last panel marks in white every pixel whose shade differs from the clean fra
 
 | Problem | Cause | Fix |
 |---|---|---|
-| `FileNotFoundError: roms/pokered.gb` | No ROM | Copy your own Pokémon Red dump to `roms/pokered.gb` |
-| `FileNotFoundError: models/...pt` | Models not trained (they are not in git) | `python tools/train_screen_state.py`, `python tools/train_tiles.py` (needs the recorded data in `data/raw/`) |
-| `budget used up` | The episode ran past 1,500 decisions | Raise it with `--max 3000`, or try another `--seed` |
-| The agent stands still in camera mode | Level 2 or higher: shades cannot be recovered | Use `--input sim:1` or clean frames |
-| `ModuleNotFoundError: evaluation` | Run from another folder | Run from the project root |
+| `FileNotFoundError: roms/pokered.gb` | The ROM is missing | Copy your own Pokémon Red dump to `roms/pokered.gb` |
+| `FileNotFoundError: models/...pt` | The trained models are missing (they aren't stored on GitHub) | Use the models from the zip, or run `python tools/train_screen_state.py` and `python tools/train_tiles.py` (needs the recorded data in `data/raw/`) |
+| `budget used up` | The episode went past 1,500 decisions | Raise the limit with `--max 3000`, or try another `--seed` |
+| The agent stands still in camera mode | Level 2 or higher: the shades can't be recovered | Use `--input sim:1` or clean frames |
+| `ModuleNotFoundError: evaluation` | The command was run from another folder | Run it from the project root |
