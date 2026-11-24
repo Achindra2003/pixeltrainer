@@ -1,6 +1,6 @@
 # PixelTrainer
 
-A vision-only agent that plays Pokémon Red from screen pixels. See [Project_Synopsis.md](Project_Synopsis.md) for the idea, [PLAN.md](PLAN.md) for the design and [BUILD.md](BUILD.md) for the task list.
+A vision-only agent that plays Pokémon Red from screen pixels. See [Project_Synopsis.md](Project_Synopsis.md) for the idea, [PLAN.md](PLAN.md) for the design and [BUILD.md](BUILD.md) for the task list. **How to run it, what the code does, and the input/output images: [USER_MANUAL.md](USER_MANUAL.md)** (also `USER_MANUAL.docx`).
 
 ## Setup (Windows, PowerShell)
 

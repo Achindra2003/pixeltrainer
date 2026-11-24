@@ -16,6 +16,7 @@ gains nothing on moiré (96.7% with and without).
 """
 import cv2
 import numpy as np
+import pywt
 from skimage.restoration import wiener as _wiener
 
 from pixeltrainer.capture.localise import background
@@ -117,6 +118,19 @@ def notch_moire(g, screen_mask=None, width=3.0):
     dy, dx = yy[py, px], xx[py, px]
     H = 1 - np.exp(-((yy - dy) ** 2 + (xx - dx) ** 2) / (2 * width ** 2))           - np.exp(-((yy + dy) ** 2 + (xx + dx) ** 2) / (2 * width ** 2))
     return _apply_spectrum(g, np.clip(H, 0, 1))
+
+
+def wavelet_denoise(g, wavelet="haar", level=2):
+    """Wavelet shrinkage (U2-T2): 2-level DWT, soft-threshold each detail band (BayesShrink: t = sigma^2 /
+    signal sigma of the band), sigma from the median absolute finest diagonal band / 0.6745, inverse DWT.
+    Haar: its box basis fits the flat-shaded tiles (on a synthetic tile image, mean error 3.9 vs 10.6 for db2)."""
+    c = pywt.wavedec2(g, wavelet, level=level)
+    sigma = np.median(np.abs(c[-1][2])) / 0.6745
+    if sigma == 0:  # no noise measured: a zero threshold would divide 0 by 0 inside pywt
+        return g.astype(np.float32)
+    shrink = [tuple(pywt.threshold(d, sigma ** 2 / np.sqrt(max(d.var() - sigma ** 2, 1e-6)), "soft") for d in band)
+              for band in c[1:]]
+    return pywt.waverec2([c[0]] + shrink, wavelet)[:g.shape[0], :g.shape[1]].astype(np.float32)
 
 
 def gaussian_psf(sigma):

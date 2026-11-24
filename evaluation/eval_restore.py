@@ -51,6 +51,7 @@ METHODS = {
     "gaussian low-pass": lambda img, c: R.gaussian_lowpass(_grey(img)),
     "butterworth low-pass": lambda img, c: R.butterworth_lowpass(_grey(img)),
     "fft notch": lambda img, c: R.notch_moire(_grey(img)),
+    "wavelet shrinkage": lambda img, c: R.wavelet_denoise(_grey(img)),
     "wiener (blind sigma)": _blind_wiener,
     "auto gamma": lambda img, c: _auto_gamma(_grey(img)),
     "hist. equalisation": lambda img, c: R.equalise(_grey(img)),

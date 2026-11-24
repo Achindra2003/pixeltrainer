@@ -19,3 +19,6 @@ __pycache__/
 # Claude session notes
 baton*.txt
 2026-*.txt
+
+# Built hand-in files
+submission/

@@ -4,3 +4,5 @@ numpy==2.2.4
 torch==2.12.1
 pytest==9.0.2
 scikit-image==0.26.0
+matplotlib==3.10.8
+PyWavelets==1.8.0

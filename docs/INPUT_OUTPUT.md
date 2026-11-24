@@ -1,0 +1,81 @@
+<div class="cover">
+<h1 class="title">Input and Output Images</h1>
+<p class="sub">Computer Vision (MCA509D-5) — CIA 3</p>
+<p class="sub">PixelTrainer — A Vision-Only Agent that Plays Pokémon Red</p>
+<p>Achindra Sharma — 2547105 (Individual Submission)</p>
+<p>4MCA A</p>
+</div>
+
+Every figure below was produced by the project code (`python tools/make_figures.py`) from a real run (seed 0) or from unseen test runs 15–19. In each figure the **input image is on the left and the output on the right**. The full explanation and justification of each figure is in the User Manual, Section 5. A video of one whole episode is submitted alongside this file as `demo.mp4`.
+
+::: item
+## 1. The input image
+
+**Input:** one 160×144 Game Boy frame from the emulator. **Output:** the same frame quantised to 4 shade indices on its fixed 9×10 grid of 16×16 cells, and its histogram (exactly four shades).
+
+![Figure 1 — The input: one 160×144 Game Boy frame, 4 grey shades, on a fixed 16×16 cell grid.](figures/fig1_input.png)
+:::
+
+::: item
+## 2. Screen state
+
+**Input:** a whole frame. **Output:** one of 5 screen states (overworld, battle, dialogue, menu, transition). CNN accuracy on 16,432 unseen frames: 99.49%.
+
+![Figure 2 — Screen-state classification: one frame per class, with true label, CNN and heuristic output.](figures/fig2_screen_state.png)
+:::
+
+::: item
+## 3. Tile classes
+
+**Input:** an overworld frame. **Output:** a class for every 16×16 cell (walkable, wall, door, sign…), the map the planner searches. Agreement with the game's collision data on 266,883 unseen cells: 100%.
+
+![Figure 3 — Tile classification per 16×16 cell: input frame, exact-hash lookup, CNN.](figures/fig3_tiles.png)
+:::
+
+::: item
+## 4. NPC detection
+
+**Input:** an overworld frame. **Output:** a box, facing direction and NCC score for each person. Unseen tests: 100% precision, 97.5% recall.
+
+![Figure 4 — NPC detection by template matching, with the detected facing direction.](figures/fig4_npc.png)
+:::
+
+::: item
+## 5. Registration
+
+**Input:** two consecutive frames. **Output:** the phase-correlation peak and the move in whole cells. Map position error against the game's memory: 0 tiles on 12,212 frames.
+
+![Figure 5 — Registration: the frame is located on the world map by its pixel shift.](figures/fig5_registration.png)
+:::
+
+::: item
+## 6. World map and plan
+
+**Input:** the registered frames of one episode. **Output:** the world map built from them, with the A\* path (yellow) to the frontier target (magenta).
+
+![Figure 6 — The built world map and the A* plan to the next frontier.](figures/fig6_map_plan.png)
+:::
+
+::: item
+## 7. Battle reading and choice
+
+**Input:** a battle frame. **Output:** the enemy species (NCC), both HP fractions, the menu text (OCR) and the move the policy picks. Unseen tests: species 100% (716/716).
+
+![Figure 7 — Battle reading: species (NCC), HP bars, menu text (OCR) and the chosen action.](figures/fig7_battle.png)
+:::
+
+::: item
+## 8. Goal reached
+
+**Input:** the last frame of the episode and the sign template. **Output:** the matched sign (NCC 1.000 ≥ 0.9), so the agent stops. All 60/60 evaluation episodes reached this goal.
+
+![Figure 8 — Goal reached: the Viridian City Poké Center sign is recognised.](figures/fig8_landmark.png)
+:::
+
+::: item
+## 9. Camera mode
+
+**Input:** a simulated camera photo of the screen (tilted, blurred, unevenly lit, noisy). **Output:** a clean 4-shade frame after localise → restore → rectify → quantise. Level 1 (top row) succeeds with 99.95% of pixels correct; level 2 (bottom row) fails, shown on purpose as the method's limit.
+
+![Figure 9 — Camera mode: photo → localise → rectify → quantise back to a 4-shade frame.](figures/fig9_capture.png)
+:::
