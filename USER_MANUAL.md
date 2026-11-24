@@ -31,7 +31,7 @@ python -m venv --system-site-packages .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
 copy <your dump>.gb roms\pokered.gb
 .\.venv\Scripts\python tools\check_rom.py      # checks the ROM
-.\.venv\Scripts\python -m pytest -q            # 46 tests, all should pass
+.\.venv\Scripts\python -m pytest -q            # 47 tests, all should pass
 ```
 
 The trained models are `models/screen_state.pt` and `models/tiles.pt`. If they are missing (for example, in a fresh git clone), train them first: `python tools/train_screen_state.py` and `python tools/train_tiles.py`.
@@ -86,7 +86,7 @@ pixeltrainer/            the agent: sees pixels only
     localise.py, restore.py, rectify.py, quantise.py
 evaluation/              scoring against the game's true state (the only code that reads RAM)
 tools/                   training, labelling and figure scripts
-tests/                   46 unit tests; test_ram_boundary.py fails if the agent reads RAM
+tests/                   47 unit tests; test_ram_boundary.py fails if the agent reads RAM
 ```
 
 ### 3.2 One decision, step by step
