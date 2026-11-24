@@ -125,7 +125,92 @@ Here is each step in plain words.
 
 9. **Get unstuck.** If nothing on screen changes for 8 decisions, a watchdog presses a random button. It is a safety net for the rare cases where the agent gets stuck.
 
-### 3.3 How the course topics fit in
+### 3.3 The algorithms behind each step, and why I chose them
+
+Most computer vision topics have several well-known algorithms. Feature description alone could mean SIFT, ORB, HOG or a CNN. A key part of this project was choosing the *right* one for each job, so this section explains exactly what my code does at each stage and why.
+
+The guiding idea came from looking at the input (Section 4). A Game Boy screen is **exact**: it has only 4 shades, a fixed grid, and no noise or rotation. General-purpose methods like SIFT or YOLO are designed to cope with messy real-world photos, and that robustness isn't needed here. So for the clean screen I used the simplest method that is exactly right. I kept the heavier, more robust methods for camera mode, where the input really is messy.
+
+**1. Tile types: feature description and matching** (`perception/grid.py`, `tiles.py`)
+
+- *Descriptor:* each 16×16 cell's 256 shade values are hashed (BLAKE2b, 8 bytes). The hash is the cell's fingerprint.
+- *Matching:* a dictionary lookup in a table of 101 cells I labelled by hand. A cell that isn't in the table is marked "unknown".
+- *Why not SIFT, ORB or HOG?* Those descriptors are built to survive rotation, scaling and lighting changes, and none of that happens on this screen. The same tile always produces the same 256 values, so an exact hash is both perfect and instant.
+- *Backup CNN:* 3 convolution layers (16, 32 and 64 filters, 3×3) with batch normalisation and ReLU, followed by a fully connected layer for the 9 classes. I flatten the features instead of pooling them away, so the network keeps track of *where* a pattern sits in the cell (a ledge's edge is always at the bottom). I trained it with ±1 pixel shifts, so it still works on cells the table has never seen.
+
+**2. Screen type: a CNN** (`perception/screen_state.py`)
+
+- 4 convolution layers with stride 2 (5×5, then 3×3 kernels), then average pooling down to a 3×3 grid, then a fully connected layer for the 5 classes.
+- *Why pool to 3×3 instead of 1×1?* The layout is what tells the screens apart. A battle has its display in the corners, and dialogue has a text box along the bottom. A 3×3 grid keeps that rough layout.
+
+**3. Finding people: connected components + normalised cross-correlation** (`perception/npc.py`)
+
+1. Take every black (shade 3) pixel, since all character sprites have black outlines.
+2. Group touching black pixels into 8-connected components (`cv2.connectedComponentsWithStats`) and drop tiny specks.
+3. Each sprite-sized box that touches a component becomes a candidate.
+4. Score each candidate against every sprite template with **masked NCC**: NCC = Σ(a − ā)(b − b̄) / √(Σ(a − ā)² · Σ(b − b̄)²), counting only the pixels inside the sprite's outline, so the ground behind it doesn't matter.
+5. A score of 0.8 or more is a person. The best-matching template also tells me which way they are facing (I have one template per direction).
+6. Overlapping duplicate boxes are removed using intersection over union (IoU > 0.5).
+
+*Why not a trained detector like YOLO?* There are only a handful of known sprites, and NCC is unaffected by brightness and contrast. A deep detector would need far more data and would be no more accurate here.
+
+**4. Working out position: block matching + phase correlation** (`mapping/registration.py`)
+
+- *Main method:* the agent knows which button it pressed, so it can only have moved 0, 1 or 2 cells in that direction. For each option it shifts the old frame by that many 16-pixel cells, measures the mean absolute difference (MAD) with the new frame (ignoring the player's own cell), and picks the smallest.
+- *Fallback, phase correlation* (`cv2.phaseCorrelate`), for noisy frames. It takes the Fourier transform of both frames and computes the normalised cross-power spectrum. By the Fourier shift theorem, the inverse transform of that has a sharp peak exactly at the shift.
+- *Why both?* Grass and paths repeat every 16 pixels, so phase correlation on its own sometimes mistakes a real step for no movement. It was right 10,766 times out of 10,770. With the pressed direction as a hint, it was right all 10,770 times.
+
+**5. Planning: region growing + A\* search** (`planning/explore.py`, `astar.py`)
+
+1. Seed a region at the player's cell and keep adding 4-connected neighbours that are walkable. A ledge can only be crossed in the direction you jump off it.
+2. The **frontier** is the set of unknown cells touching the grown region.
+3. Each frontier cell is scored as (progress north) − 0.5 × (steps to reach it), and the best one becomes the target.
+4. A\* search, using a priority queue and the Manhattan distance |dx| + |dy| as its heuristic, finds the path. The first step of the path is the button to press.
+
+**6. Battles: NCC, glyph matching and pixel counting** (`perception/battle.py`, `ocr.py`)
+
+- *Species:* NCC of the 56×56 enemy sprite box against all 151 Pokémon front sprites. Each sprite is mean-centred and normalised beforehand, so a single matrix multiplication scores all 151 at once.
+- *OCR:* the game's text sits on an 8×8 grid in one fixed font. Each 8×8 tile is matched exactly against the font first. If that fails, it takes the closest glyph by **Hamming distance** (the number of pixels that differ), as long as no more than 6 pixels differ. Anything further away isn't text.
+- *HP:* count the filled pixels (shade 2 or darker) along the 48-pixel bar and divide by 48.
+
+**7. Reaching the goal: template matching with a threshold** (`perception/landmark.py`)
+
+- `cv2.matchTemplate` with normalised correlation against the "POKé" sign. A score of 0.9 or more means the agent has arrived.
+
+**8. Camera mode: localise, restore, rectify, quantise** (`capture/`)
+
+- *Finding the screen* (`localise.py`):
+  1. Fit a flat plane (a + bx + cy) to the border of the photo for each colour channel. This is the background model.
+  2. Pixels more than 20 grey levels away from that model are screen. This is thresholding.
+  3. Clean up the mask (opening, then closing) and take the largest contour.
+  4. Find its 4 sides with the Hough line transform.
+  5. Refine each side to sub-pixel accuracy by searching the Sobel gradient along the side's normal, then fit a straight line through those points.
+  6. The 4 corners are where neighbouring lines intersect.
+- *Restoration* (`restore.py`):
+  1. Divide by the background plane, which evens out uneven light and colour cast in one step.
+  2. Apply Wiener deconvolution with a Gaussian blur kernel. The blur width isn't known, so the code tries several values (σ from 0 to 1.8) and keeps the one whose result looks most like 4 clean shades.
+- *Straightening* (`rectify.py`): a 4-point perspective transform maps the corners back to a flat 160×144 screen, sampling at each pixel's centre.
+- *Back to 4 shades* (`quantise.py`):
+  1. Take the histogram, log-scale it and smooth it.
+  2. Find the 4 strongest peaks; the threshold between two shades is the lowest valley between their peaks.
+
+  I also tried multi-Otsu, but it merged rare shades and split spread-out ones, so the valley method won.
+
+**Summary of my choices**
+
+| Concept | Common alternatives | What I used | Why |
+|---|---|---|---|
+| Feature description | SIFT, ORB, HOG | Exact pixel hash | The screen is exact, so no invariance is needed |
+| Feature matching | k-nearest neighbours, FLANN | Hash lookup, NCC, Hamming distance | Exact and fast on a fixed palette |
+| Object detection | YOLO, Haar cascades | Connected components → masked NCC | Few known sprites, and no training data needed |
+| Registration | Feature matching, optical flow | Block MAD + phase correlation | Moves are always whole cells |
+| Edge and line detection | Canny, LSD | Sobel + Hough + sub-pixel refinement | Corners to within 0.12 px on level-1 photos |
+| Thresholding | Otsu, adaptive | Histogram valleys | Handles rare and spread-out shades |
+| Segmentation | Watershed, split-and-merge | Region growing | Grows directly over the tile grid |
+| Classification | SVM, k-nearest neighbours | Small CNNs | Learns layout and texture together |
+| Restoration | Inverse filter, median | Light flattening + Wiener with blind σ | Best in my measured comparison |
+
+### 3.4 How the course topics fit in
 
 When I planned the project, I tried to use the topics we covered in class wherever they actually solved a problem, rather than adding them just to tick boxes. The table below goes through every topic taught so far (Units 1 and 2, and Unit 3 Topic 1) and shows where it appears. Rows marked **(agent)** run while the agent is playing. The others are in the camera-mode pipeline, or in experiments I ran to choose the best method.
 
@@ -158,7 +243,7 @@ When I planned the project, I tried to use the topics we covered in class wherev
 
 To choose the restoration methods for camera mode, I tested every filter against every type of degradation in `evaluation/eval_restore.py`, measuring PSNR, SSIM and the share of pixels that end up with the right shade. The best combination was "flatten the lighting, then Wiener deconvolution", so that is what the agent uses. Wavelet denoising was interesting: it gave the best SSIM of any single-photo method on Gaussian noise (0.914 → 0.933) and Poisson noise (0.771 → 0.808). I still left it out of the chain, because quantisation already gets 99–100% of the shades right on those noise types, so it wouldn't change what the agent sees.
 
-### 3.4 How I checked the code
+### 3.5 How I checked the code
 
 Because the whole point of the project is "pixels only", I needed to be sure the agent never cheats. I kept the testing honest in three ways:
 
@@ -193,7 +278,7 @@ Three properties of this image are what make the whole project possible:
 
 ### 4.2 Why the image is necessary
 
-**The image is the only information the agent has.** The game's memory knows where the player is, what the map looks like and how much HP the enemy has, but my rule for this project is that the agent may not read any of it (Section 3.4). Every fact it uses has to be measured from the screen:
+**The image is the only information the agent has.** The game's memory knows where the player is, what the map looks like and how much HP the enemy has, but my rule for this project is that the agent may not read any of it (Section 3.5). Every fact it uses has to be measured from the screen:
 
 - where it is, by comparing consecutive frames
 - where it can walk, from the tile classes
