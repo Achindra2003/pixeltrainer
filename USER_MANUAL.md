@@ -7,21 +7,63 @@
 <p>Repository: <a href="https://github.com/Achindra2003/pixeltrainer">github.com/Achindra2003/pixeltrainer</a></p>
 </div>
 
-## About the project
+## Background: the game and the task
 
-Most game-playing bots cheat a little. They read the game's memory, so they know exactly where the player is, what the map looks like and how much HP the enemy has. I wanted to build one that doesn't. **PixelTrainer plays Pokémon Red only by looking at the screen**, the same way a person does, so every piece of information it uses has to come from computer vision.
+**What Pokémon Red is.** Pokémon Red is a role-playing game made by Game Freak and Nintendo for the original Nintendo Game Boy. It came out in 1996 in Japan and in 1998 internationally. The Game Boy has a small 160×144 pixel screen that shows only 4 shades of grey, with no colour. The game is played with a direction pad and two buttons, A (confirm) and B (cancel).
 
-The task I set it is the first real journey in the game. It starts in Pallet Town, walks north through Route 1, fights the wild Pokémon that jump out of the grass, and stops when it sees the Poké Center sign in Viridian City. For every frame the program asks itself a few questions:
+**How the game is played.** The player controls a young trainer, seen from above, who walks around a world made of square tiles: towns, paths, trees, fences, houses and patches of tall grass. The game switches between a few kinds of screens:
 
-- What kind of screen is this: the map, a battle, a dialogue box or a menu?
-- Where can I walk, and where am I?
-- Is anyone standing in my way?
-- If I'm in a battle, which Pokémon am I fighting and which move should I use?
-- Have I reached the goal yet?
+- **The map (overworld).** The player walks one tile at a time. The camera follows them, so the player always stays in the middle of the screen while the world scrolls past.
+- **Battles.** Walking through tall grass can start a fight with a wild Pokémon (a creature). The screen changes to show the enemy, both sides' health (HP) bars and a menu. Battles are turn-based: each turn the player picks one of their Pokémon's moves, and some moves work better than others depending on the creatures' "types" (for example, Water beats Fire).
+- **Text boxes and menus.** People and signs talk to the player through text boxes, which are cleared by pressing A.
 
-Each answer comes from an image processing technique we covered in class. Once all of them are answered, the program presses one button and the loop starts again.
+**What my program has to do.** The task is the first journey of the game. The player starts in their home town, **Pallet Town**, walks north along **Route 1** (a path full of tall grass, ledges and other people), wins any wild battles on the way, and arrives in **Viridian City**, which is marked by its Poké Center sign. A human does this by looking at the screen, recognising what they see, remembering where they've been and deciding where to go. My program has to do exactly the same thing, using only the screen image.
 
-This manual covers how to install and run the program (Sections 1–2), how the code works (Section 3), why the input image is so important (Section 4), and what each output image shows and why it is correct (Section 5).
+**Why this makes a good computer vision problem.** Each skill a human player uses maps onto a computer vision task:
+- telling a battle from the map is **image classification**
+- seeing walls and paths is **segmentation** of the scene into regions
+- spotting people and recognising the enemy creature is **detection** and **template matching**
+- reading menus is **OCR**
+- knowing where you are as the screen scrolls is **image registration**
+
+On top of that, a photo of a real Game Boy screen would be blurred, tilted and noisy, which brings in **image restoration**. So the project uses the full course, from basic pixels and quantisation up to features, segmentation and neural networks, inside one working system. You can see examples of each screen type in Figure 2 (Section 5.1).
+
+## At a glance
+
+**PixelTrainer is a program that plays Pokémon Red by looking at the screen, the way a person does.** It starts in Pallet Town, walks north through Route 1, fights the wild Pokémon it meets, and stops when it recognises the Poké Center sign in Viridian City. It never reads the game's memory: **every decision comes from computer vision on the screen image.**
+
+![Figure A — How PixelTrainer works: one screen image goes in, a chain of computer-vision stages reads it, and one button press comes out. Each box shows the question it answers, the method it uses and the syllabus unit it comes from.](docs/figures/fig0_pipeline.png)
+
+**What makes this project different**
+
+- **It works from pixels only.** Most game bots read the game's memory to find out where the player is or how much HP an enemy has. Mine has to *see* all of that, and an automatic test fails if any agent code touches the memory.
+- **It's a whole system, not a single detector.** About ten vision stages run together, live, on every frame (Figure A): screen classification, tile classification, person detection, position tracking, map building, path planning, sprite recognition, OCR, HP reading and goal detection.
+- **It takes a real photo of the screen as well.** In camera mode the input is a tilted, blurred, noisy photo. The program finds the screen, restores it, straightens it and turns it back into a clean frame before playing. This is where most of the Unit 2 restoration topics are used.
+- **It covers the syllabus.** 22 of the 23 topics taught so far are used in the code (Section 3.3). For each one I chose the specific algorithm that suited the problem, and Appendix A explains why.
+- **Every result is measured.** All the accuracy numbers come from recorded runs the models never saw during training, and they are checked against the game's true state.
+
+**Results**
+
+| What was measured | Result |
+|---|---|
+| Reached Viridian City (20 seeds × 3 battle strategies) | **60 / 60 episodes** |
+| Screen type (16,432 unseen frames) | 99.49% correct |
+| Walkable / blocked tiles (266,883 unseen cells) | 100% correct |
+| People on the map | 100% precision, 97.5% recall |
+| Position tracking (12,212 frames) | 0 tiles of error, so the map never drifted |
+| Enemy species (716 test frames, 151 possible) | 100% correct |
+| Camera mode, level 1 photo | 99.95% of pixels restored correctly; goal reached in 3/3 runs |
+
+**How to read this manual**
+
+| If you want to… | Go to |
+|---|---|
+| know what Pokémon Red is and what the task is | Background |
+| install it and run it | Sections 1–2 |
+| understand the code, step by step | Section 3 |
+| see why the input image matters | Section 4 |
+| see the output images and why they are correct | Section 5 |
+| see the exact algorithms and why I chose them | Appendix A |
 
 ---
 
@@ -93,124 +135,61 @@ tests/                   47 unit tests; test_ram_boundary.py fails if the agent 
 
 ### 3.2 What happens in one decision
 
-The main loop is `run()` in `pixeltrainer/agent.py`. Each time round the loop, the agent looks at one frame and presses one button:
+The main loop is `run()` in `pixeltrainer/agent.py`. Each time round the loop, the agent looks at one frame and presses one button. Figure A shows the whole chain. Below, each stage is described in three parts: the **problem** it solves, the **idea** behind the solution, and the **result** on unseen data. The exact algorithms are in Appendix A.
 
-```
-frame ─► [camera mode: localise ─► restore ─► rectify ─► quantise]
-      ─► screen_state.cnn(frame)
-           overworld  ─► tiles.lookup + npc.detect ─► WorldMap.update (registration) ─► landmark.seen?
-                           ─► explore (region growing + frontier) ─► A* ─► first step of the path
-           battle     ─► battle.menu / cursor / moves / species + ocr ─► battle_policy.choose ─► button
-           dialogue   ─► A        menu ─► B        transition ─► wait
-      ─► button pressed ─► emulator runs until the screen is still ─► next frame
-```
+**1. Read the screen.** (`emu.py`)
+*Problem:* the agent needs the screen in a form it can compute with.
+*Idea:* the Game Boy has only 4 grey shades, so each pixel becomes a number from 0 (white) to 3 (black). In camera mode, the `capture/` module first turns the photo back into this form (step 10).
 
-Here is each step in plain words.
+**2. What kind of screen is this?** (`perception/screen_state.py`)
+*Problem:* walking logic is useless in a battle, and battle logic is useless on the map, so the agent has to know which situation it's in first.
+*Idea:* a small CNN that I trained looks at the whole frame and labels it overworld, battle, dialogue, menu or transition. The layout gives it away: a battle has its display in the corners, while dialogue has a text box along the bottom.
+*Result:* 99.49% correct, against 95.36% for a hand-made rule-based version I wrote for comparison.
 
-1. **Grab the frame.** `Emu.frame()` gives a 144×160 image in which every pixel is one of four shades, 0 (white) to 3 (black). In camera mode the input is a simulated photo instead, and the `capture/` module first turns it back into this clean form (Section 4.3).
+**3. Where can I walk?** (`perception/grid.py`, `tiles.py`)
+*Problem:* the agent needs a map of walkable and blocked cells to plan a route.
+*Idea:* the game world is built from 16×16 tiles, so I cut the frame into a 9×10 grid. Each cell gets a fingerprint (a hash of its pixels), which is looked up in a table of tiles I labelled. A small CNN handles cells the table has never seen.
+*Result:* 100% agreement with the game's own collision data.
 
-2. **Work out what kind of screen it is** (`perception/screen_state.py`). This decides everything that follows, because walking logic is useless in a battle and battle logic is useless on the map. I trained a small CNN (four convolution layers) to sort each frame into overworld, battle, dialogue, menu or transition. I also wrote a simple hand-made version that checks for fixed patterns, like the corners of the battle display, so I could compare the two.
+**4. Is anyone in the way?** (`perception/npc.py`)
+*Problem:* people walk around, so they can't be treated as permanent walls.
+*Idea:* character sprites have black outlines. I group touching black pixels to find candidate boxes, then confirm each one by matching it against the character templates (normalised cross-correlation). The best match also tells me which way the person is facing.
+*Result:* 100% precision and 97.5% recall.
 
-3. **Figure out where it can walk** (`perception/grid.py`, `tiles.py`). The game world is made of 16×16 tiles, so I cut the frame into a 9×10 grid of cells. The fast method takes a fingerprint (hash) of each cell's pixels and looks it up in a table of 101 cells I labelled: walkable, wall, grass, water, door, ledge or sign. As a backup I also trained a small CNN on single cells. It still gives an answer when a cell looks slightly different from anything in the table.
+**5. Where am I?** (`mapping/registration.py`, `worldmap.py`)
+*Problem:* without reading memory, the agent doesn't know its own position.
+*Idea:* every step scrolls the screen by exactly 16 pixels, so comparing two frames shows how far the agent moved. For noisy frames, phase correlation (based on the Fourier transform) finds the shift instead. Each frame is then pasted onto a growing world map at that position.
+*Result:* right on all 10,770 test steps, so the map never drifted (0 tiles of error).
 
-4. **Spot other people** (`perception/npc.py`). Character sprites have dark outlines, so I first group touching dark pixels together (connected components) to get candidate boxes. Each box is then compared against the character templates using normalised cross-correlation (NCC). A person's cell is treated as blocked, but only for a while, because people walk around.
+**6. Have I arrived?** (`perception/landmark.py`)
+*Problem:* the agent needs to know when to stop.
+*Idea:* template matching against the Poké Center sign. A match score of 0.9 or more means the goal is reached.
+*Result:* every one of the 60 evaluation episodes ended here.
 
-5. **Keep track of position and build a map** (`mapping/registration.py`, `worldmap.py`). The agent never reads its coordinates from memory, so it has to work them out. Every step scrolls the screen by exactly 16 pixels. By comparing the new frame with the previous one, the agent can tell whether it moved 0, 1 or 2 cells. When the frames are too noisy for a direct comparison, it falls back to phase correlation, which uses the Fourier transform. If it pressed a direction and moved 0 pixels, it walked into a wall. Each frame is then pasted into a growing map at the right offset.
+**7. Where do I go next?** (`planning/explore.py`, `astar.py`)
+*Problem:* the agent can only see a small part of the world at a time, so it has to explore.
+*Idea:* region growing from the player's cell marks everywhere it can reach. The unknown cells along the edge (the "frontier") are where new map gets revealed. The agent picks the frontier cell that gets it furthest north without too long a detour, and A\* search finds the path there.
+*Result:* the seed-0 run reached Viridian in 133 button presses.
 
-6. **Check whether it has arrived** (`perception/landmark.py`). The agent compares the screen against a template of the Poké Center sign. If the match score is 0.9 or higher, the goal is reached and the episode ends.
+**8. Battles: what am I fighting, and which move should I use?** (`perception/battle.py`, `ocr.py`, `policy/battle_policy.py`)
+*Problem:* to fight well, the agent has to read the battle screen just as a player would.
+*Idea:* the enemy is identified by matching its sprite against all 151 Pokémon. The menus and move names are read with OCR, by matching each 8×8 letter against the game's font. The HP bars are read by counting filled pixels. The agent then picks the move with the highest expected damage.
+*Result:* species 100% correct, OCR 99.99%, HP bars within 0.63% on average.
 
-7. **Decide where to go** (`planning/explore.py`, `astar.py`). Starting from the player's cell, region growing marks every cell the agent can reach. The unknown cells along the edge of that region (the "frontier") are where new map gets revealed. The agent scores each frontier cell by how far north it is, minus a cost for how far away it is, and picks the best one. A* search with Manhattan distance then finds the path, and the first step of that path is the button to press.
+**9. Getting unstuck.**
+If nothing on screen changes for 8 decisions, a watchdog presses a random button. It's a safety net for the rare cases where the agent gets stuck.
 
-8. **Fight battles** (`perception/battle.py`, `ocr.py`, `policy/battle_policy.py`). The agent reads the menu text with OCR, so it knows which menu is open and where the cursor is. It identifies the enemy Pokémon by matching the sprite against all 151 front sprites, and reads both HP bars by counting filled pixels. It then picks the move with the highest expected damage: power × same-type bonus × type effectiveness × accuracy.
+**10. Camera mode: turning a photo back into a clean frame.** (`capture/`)
+*Problem:* a photo of the screen is tilted, blurred, unevenly lit and noisy, so none of the exact methods above work on it directly.
+*Idea:* four steps from the syllabus:
+1. Find the screen, using background subtraction, Sobel edges and Hough lines.
+2. Restore it, by evening out the lighting and then applying Wiener deblurring.
+3. Straighten it, with a perspective warp.
+4. Reduce it back to 4 shades, by splitting the histogram at its valleys.
 
-9. **Get unstuck.** If nothing on screen changes for 8 decisions, a watchdog presses a random button. It is a safety net for the rare cases where the agent gets stuck.
+*Result:* on a level-1 photo, 99.95% of pixels come back correct and the agent still reaches the goal. Level 2 is where the method reaches its limit (Section 5.8).
 
-### 3.3 The algorithms behind each step, and why I chose them
-
-Most computer vision topics have several well-known algorithms. Feature description alone could mean SIFT, ORB, HOG or a CNN. A key part of this project was choosing the *right* one for each job, so this section explains exactly what my code does at each stage and why.
-
-The guiding idea came from looking at the input (Section 4). A Game Boy screen is **exact**: it has only 4 shades, a fixed grid, and no noise or rotation. General-purpose methods like SIFT or YOLO are designed to cope with messy real-world photos, and that robustness isn't needed here. So for the clean screen I used the simplest method that is exactly right. I kept the heavier, more robust methods for camera mode, where the input really is messy.
-
-**1. Tile types: feature description and matching** (`perception/grid.py`, `tiles.py`)
-
-- *Descriptor:* each 16×16 cell's 256 shade values are hashed (BLAKE2b, 8 bytes). The hash is the cell's fingerprint.
-- *Matching:* a dictionary lookup in a table of 101 cells I labelled by hand. A cell that isn't in the table is marked "unknown".
-- *Why not SIFT, ORB or HOG?* Those descriptors are built to survive rotation, scaling and lighting changes, and none of that happens on this screen. The same tile always produces the same 256 values, so an exact hash is both perfect and instant.
-- *Backup CNN:* 3 convolution layers (16, 32 and 64 filters, 3×3) with batch normalisation and ReLU, followed by a fully connected layer for the 9 classes. I flatten the features instead of pooling them away, so the network keeps track of *where* a pattern sits in the cell (a ledge's edge is always at the bottom). I trained it with ±1 pixel shifts, so it still works on cells the table has never seen.
-
-**2. Screen type: a CNN** (`perception/screen_state.py`)
-
-- 4 convolution layers with stride 2 (5×5, then 3×3 kernels), then average pooling down to a 3×3 grid, then a fully connected layer for the 5 classes.
-- *Why pool to 3×3 instead of 1×1?* The layout is what tells the screens apart. A battle has its display in the corners, and dialogue has a text box along the bottom. A 3×3 grid keeps that rough layout.
-
-**3. Finding people: connected components + normalised cross-correlation** (`perception/npc.py`)
-
-1. Take every black (shade 3) pixel, since all character sprites have black outlines.
-2. Group touching black pixels into 8-connected components (`cv2.connectedComponentsWithStats`) and drop tiny specks.
-3. Each sprite-sized box that touches a component becomes a candidate.
-4. Score each candidate against every sprite template with **masked NCC**: NCC = Σ(a − ā)(b − b̄) / √(Σ(a − ā)² · Σ(b − b̄)²), counting only the pixels inside the sprite's outline, so the ground behind it doesn't matter.
-5. A score of 0.8 or more is a person. The best-matching template also tells me which way they are facing (I have one template per direction).
-6. Overlapping duplicate boxes are removed using intersection over union (IoU > 0.5).
-
-*Why not a trained detector like YOLO?* There are only a handful of known sprites, and NCC is unaffected by brightness and contrast. A deep detector would need far more data and would be no more accurate here.
-
-**4. Working out position: block matching + phase correlation** (`mapping/registration.py`)
-
-- *Main method:* the agent knows which button it pressed, so it can only have moved 0, 1 or 2 cells in that direction. For each option it shifts the old frame by that many 16-pixel cells, measures the mean absolute difference (MAD) with the new frame (ignoring the player's own cell), and picks the smallest.
-- *Fallback, phase correlation* (`cv2.phaseCorrelate`), for noisy frames. It takes the Fourier transform of both frames and computes the normalised cross-power spectrum. By the Fourier shift theorem, the inverse transform of that has a sharp peak exactly at the shift.
-- *Why both?* Grass and paths repeat every 16 pixels, so phase correlation on its own sometimes mistakes a real step for no movement. It was right 10,766 times out of 10,770. With the pressed direction as a hint, it was right all 10,770 times.
-
-**5. Planning: region growing + A\* search** (`planning/explore.py`, `astar.py`)
-
-1. Seed a region at the player's cell and keep adding 4-connected neighbours that are walkable. A ledge can only be crossed in the direction you jump off it.
-2. The **frontier** is the set of unknown cells touching the grown region.
-3. Each frontier cell is scored as (progress north) − 0.5 × (steps to reach it), and the best one becomes the target.
-4. A\* search, using a priority queue and the Manhattan distance |dx| + |dy| as its heuristic, finds the path. The first step of the path is the button to press.
-
-**6. Battles: NCC, glyph matching and pixel counting** (`perception/battle.py`, `ocr.py`)
-
-- *Species:* NCC of the 56×56 enemy sprite box against all 151 Pokémon front sprites. Each sprite is mean-centred and normalised beforehand, so a single matrix multiplication scores all 151 at once.
-- *OCR:* the game's text sits on an 8×8 grid in one fixed font. Each 8×8 tile is matched exactly against the font first. If that fails, it takes the closest glyph by **Hamming distance** (the number of pixels that differ), as long as no more than 6 pixels differ. Anything further away isn't text.
-- *HP:* count the filled pixels (shade 2 or darker) along the 48-pixel bar and divide by 48.
-
-**7. Reaching the goal: template matching with a threshold** (`perception/landmark.py`)
-
-- `cv2.matchTemplate` with normalised correlation against the "POKé" sign. A score of 0.9 or more means the agent has arrived.
-
-**8. Camera mode: localise, restore, rectify, quantise** (`capture/`)
-
-- *Finding the screen* (`localise.py`):
-  1. Fit a flat plane (a + bx + cy) to the border of the photo for each colour channel. This is the background model.
-  2. Pixels more than 20 grey levels away from that model are screen. This is thresholding.
-  3. Clean up the mask (opening, then closing) and take the largest contour.
-  4. Find its 4 sides with the Hough line transform.
-  5. Refine each side to sub-pixel accuracy by searching the Sobel gradient along the side's normal, then fit a straight line through those points.
-  6. The 4 corners are where neighbouring lines intersect.
-- *Restoration* (`restore.py`):
-  1. Divide by the background plane, which evens out uneven light and colour cast in one step.
-  2. Apply Wiener deconvolution with a Gaussian blur kernel. The blur width isn't known, so the code tries several values (σ from 0 to 1.8) and keeps the one whose result looks most like 4 clean shades.
-- *Straightening* (`rectify.py`): a 4-point perspective transform maps the corners back to a flat 160×144 screen, sampling at each pixel's centre.
-- *Back to 4 shades* (`quantise.py`):
-  1. Take the histogram, log-scale it and smooth it.
-  2. Find the 4 strongest peaks; the threshold between two shades is the lowest valley between their peaks.
-
-  I also tried multi-Otsu, but it merged rare shades and split spread-out ones, so the valley method won.
-
-**Summary of my choices**
-
-| Concept | Common alternatives | What I used | Why |
-|---|---|---|---|
-| Feature description | SIFT, ORB, HOG | Exact pixel hash | The screen is exact, so no invariance is needed |
-| Feature matching | k-nearest neighbours, FLANN | Hash lookup, NCC, Hamming distance | Exact and fast on a fixed palette |
-| Object detection | YOLO, Haar cascades | Connected components → masked NCC | Few known sprites, and no training data needed |
-| Registration | Feature matching, optical flow | Block MAD + phase correlation | Moves are always whole cells |
-| Edge and line detection | Canny, LSD | Sobel + Hough + sub-pixel refinement | Corners to within 0.12 px on level-1 photos |
-| Thresholding | Otsu, adaptive | Histogram valleys | Handles rare and spread-out shades |
-| Segmentation | Watershed, split-and-merge | Region growing | Grows directly over the tile grid |
-| Classification | SVM, k-nearest neighbours | Small CNNs | Learns layout and texture together |
-| Restoration | Inverse filter, median | Light flattening + Wiener with blind σ | Best in my measured comparison |
-
-### 3.4 How the course topics fit in
+### 3.3 How the course topics fit in
 
 When I planned the project, I tried to use the topics we covered in class wherever they actually solved a problem, rather than adding them just to tick boxes. The table below goes through every topic taught so far (Units 1 and 2, and Unit 3 Topic 1) and shows where it appears. Rows marked **(agent)** run while the agent is playing. The others are in the camera-mode pipeline, or in experiments I ran to choose the best method.
 
@@ -243,7 +222,7 @@ When I planned the project, I tried to use the topics we covered in class wherev
 
 To choose the restoration methods for camera mode, I tested every filter against every type of degradation in `evaluation/eval_restore.py`, measuring PSNR, SSIM and the share of pixels that end up with the right shade. The best combination was "flatten the lighting, then Wiener deconvolution", so that is what the agent uses. Wavelet denoising was interesting: it gave the best SSIM of any single-photo method on Gaussian noise (0.914 → 0.933) and Poisson noise (0.771 → 0.808). I still left it out of the chain, because quantisation already gets 99–100% of the shades right on those noise types, so it wouldn't change what the agent sees.
 
-### 3.5 How I checked the code
+### 3.4 How I checked the code
 
 Because the whole point of the project is "pixels only", I needed to be sure the agent never cheats. I kept the testing honest in three ways:
 
@@ -278,7 +257,7 @@ Three properties of this image are what make the whole project possible:
 
 ### 4.2 Why the image is necessary
 
-**The image is the only information the agent has.** The game's memory knows where the player is, what the map looks like and how much HP the enemy has, but my rule for this project is that the agent may not read any of it (Section 3.5). Every fact it uses has to be measured from the screen:
+**The image is the only information the agent has.** The game's memory knows where the player is, what the map looks like and how much HP the enemy has, but my rule for this project is that the agent may not read any of it (Section 3.4). Every fact it uses has to be measured from the screen:
 
 - where it is, by comparing consecutive frames
 - where it can walk, from the tile classes
@@ -434,3 +413,90 @@ The last panel marks in white every pixel that still ended up with the wrong sha
 | `budget used up` | The episode went past 1,500 decisions | Raise the limit with `--max 3000`, or try another `--seed` |
 | The agent stands still in camera mode | Level 2 or higher: the shades can't be recovered | Use `--input sim:1` or clean frames |
 | `ModuleNotFoundError: evaluation` | The command was run from another folder | Run it from the project root |
+
+---
+
+## Appendix A. The algorithms in detail, and why I chose them
+
+Most computer vision topics have several well-known algorithms. Feature description alone could mean SIFT, ORB, HOG or a CNN. A key part of this project was choosing the *right* one for each job, so this section explains exactly what my code does at each stage and why.
+
+The guiding idea came from looking at the input (Section 4). A Game Boy screen is **exact**: it has only 4 shades, a fixed grid, and no noise or rotation. General-purpose methods like SIFT or YOLO are designed to cope with messy real-world photos, and that robustness isn't needed here. So for the clean screen I used the simplest method that is exactly right. I kept the heavier, more robust methods for camera mode, where the input really is messy.
+
+**1. Tile types: feature description and matching** (`perception/grid.py`, `tiles.py`)
+
+- *Descriptor:* each 16×16 cell's 256 shade values are hashed (BLAKE2b, 8 bytes). The hash is the cell's fingerprint.
+- *Matching:* a dictionary lookup in a table of 101 cells I labelled by hand. A cell that isn't in the table is marked "unknown".
+- *Why not SIFT, ORB or HOG?* Those descriptors are built to survive rotation, scaling and lighting changes, and none of that happens on this screen. The same tile always produces the same 256 values, so an exact hash is both perfect and instant.
+- *Backup CNN:* 3 convolution layers (16, 32 and 64 filters, 3×3) with batch normalisation and ReLU, followed by a fully connected layer for the 9 classes. I flatten the features instead of pooling them away, so the network keeps track of *where* a pattern sits in the cell (a ledge's edge is always at the bottom). I trained it with ±1 pixel shifts, so it still works on cells the table has never seen.
+
+**2. Screen type: a CNN** (`perception/screen_state.py`)
+
+- 4 convolution layers with stride 2 (5×5, then 3×3 kernels), then average pooling down to a 3×3 grid, then a fully connected layer for the 5 classes.
+- *Why pool to 3×3 instead of 1×1?* The layout is what tells the screens apart. A battle has its display in the corners, and dialogue has a text box along the bottom. A 3×3 grid keeps that rough layout.
+
+**3. Finding people: connected components + normalised cross-correlation** (`perception/npc.py`)
+
+1. Take every black (shade 3) pixel, since all character sprites have black outlines.
+2. Group touching black pixels into 8-connected components (`cv2.connectedComponentsWithStats`) and drop tiny specks.
+3. Each sprite-sized box that touches a component becomes a candidate.
+4. Score each candidate against every sprite template with **masked NCC**: NCC = Σ(a − ā)(b − b̄) / √(Σ(a − ā)² · Σ(b − b̄)²), counting only the pixels inside the sprite's outline, so the ground behind it doesn't matter.
+5. A score of 0.8 or more is a person. The best-matching template also tells me which way they are facing (I have one template per direction).
+6. Overlapping duplicate boxes are removed using intersection over union (IoU > 0.5).
+
+*Why not a trained detector like YOLO?* There are only a handful of known sprites, and NCC is unaffected by brightness and contrast. A deep detector would need far more data and would be no more accurate here.
+
+**4. Working out position: block matching + phase correlation** (`mapping/registration.py`)
+
+- *Main method:* the agent knows which button it pressed, so it can only have moved 0, 1 or 2 cells in that direction. For each option it shifts the old frame by that many 16-pixel cells, measures the mean absolute difference (MAD) with the new frame (ignoring the player's own cell), and picks the smallest.
+- *Fallback, phase correlation* (`cv2.phaseCorrelate`), for noisy frames. It takes the Fourier transform of both frames and computes the normalised cross-power spectrum. By the Fourier shift theorem, the inverse transform of that has a sharp peak exactly at the shift.
+- *Why both?* Grass and paths repeat every 16 pixels, so phase correlation on its own sometimes mistakes a real step for no movement. It was right 10,766 times out of 10,770. With the pressed direction as a hint, it was right all 10,770 times.
+
+**5. Planning: region growing + A\* search** (`planning/explore.py`, `astar.py`)
+
+1. Seed a region at the player's cell and keep adding 4-connected neighbours that are walkable. A ledge can only be crossed in the direction you jump off it.
+2. The **frontier** is the set of unknown cells touching the grown region.
+3. Each frontier cell is scored as (progress north) − 0.5 × (steps to reach it), and the best one becomes the target.
+4. A\* search, using a priority queue and the Manhattan distance |dx| + |dy| as its heuristic, finds the path. The first step of the path is the button to press.
+
+**6. Battles: NCC, glyph matching and pixel counting** (`perception/battle.py`, `ocr.py`)
+
+- *Species:* NCC of the 56×56 enemy sprite box against all 151 Pokémon front sprites. Each sprite is mean-centred and normalised beforehand, so a single matrix multiplication scores all 151 at once.
+- *OCR:* the game's text sits on an 8×8 grid in one fixed font. Each 8×8 tile is matched exactly against the font first. If that fails, it takes the closest glyph by **Hamming distance** (the number of pixels that differ), as long as no more than 6 pixels differ. Anything further away isn't text.
+- *HP:* count the filled pixels (shade 2 or darker) along the 48-pixel bar and divide by 48.
+
+**7. Reaching the goal: template matching with a threshold** (`perception/landmark.py`)
+
+- `cv2.matchTemplate` with normalised correlation against the "POKé" sign. A score of 0.9 or more means the agent has arrived.
+
+**8. Camera mode: localise, restore, rectify, quantise** (`capture/`)
+
+- *Finding the screen* (`localise.py`):
+  1. Fit a flat plane (a + bx + cy) to the border of the photo for each colour channel. This is the background model.
+  2. Pixels more than 20 grey levels away from that model are screen. This is thresholding.
+  3. Clean up the mask (opening, then closing) and take the largest contour.
+  4. Find its 4 sides with the Hough line transform.
+  5. Refine each side to sub-pixel accuracy by searching the Sobel gradient along the side's normal, then fit a straight line through those points.
+  6. The 4 corners are where neighbouring lines intersect.
+- *Restoration* (`restore.py`):
+  1. Divide by the background plane, which evens out uneven light and colour cast in one step.
+  2. Apply Wiener deconvolution with a Gaussian blur kernel. The blur width isn't known, so the code tries several values (σ from 0 to 1.8) and keeps the one whose result looks most like 4 clean shades.
+- *Straightening* (`rectify.py`): a 4-point perspective transform maps the corners back to a flat 160×144 screen, sampling at each pixel's centre.
+- *Back to 4 shades* (`quantise.py`):
+  1. Take the histogram, log-scale it and smooth it.
+  2. Find the 4 strongest peaks; the threshold between two shades is the lowest valley between their peaks.
+
+  I also tried multi-Otsu, but it merged rare shades and split spread-out ones, so the valley method won.
+
+**Summary of my choices**
+
+| Concept | Common alternatives | What I used | Why |
+|---|---|---|---|
+| Feature description | SIFT, ORB, HOG | Exact pixel hash | The screen is exact, so no invariance is needed |
+| Feature matching | k-nearest neighbours, FLANN | Hash lookup, NCC, Hamming distance | Exact and fast on a fixed palette |
+| Object detection | YOLO, Haar cascades | Connected components → masked NCC | Few known sprites, and no training data needed |
+| Registration | Feature matching, optical flow | Block MAD + phase correlation | Moves are always whole cells |
+| Edge and line detection | Canny, LSD | Sobel + Hough + sub-pixel refinement | Corners to within 0.12 px on level-1 photos |
+| Thresholding | Otsu, adaptive | Histogram valleys | Handles rare and spread-out shades |
+| Segmentation | Watershed, split-and-merge | Region growing | Grows directly over the tile grid |
+| Classification | SVM, k-nearest neighbours | Small CNNs | Learns layout and texture together |
+| Restoration | Inverse filter, median | Light flattening + Wiener with blind σ | Best in my measured comparison |
