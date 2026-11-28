@@ -113,6 +113,8 @@ copy <your dump>.gb roms\pokered.gb
 
 The two trained models are `models/screen_state.pt` and `models/tiles.pt`. They come with the submitted zip. On a fresh clone from GitHub they are missing, and you can retrain them with `python tools/train_screen_state.py` and `python tools/train_tiles.py`.
 
+The agent starts from a save state, `states/pallet_start.state`. Save states are made from the ROM, so neither the zip nor GitHub includes one. To make it, run `python tools/play.py`, play until the player is standing in Pallet Town, then type `save pallet_start` in the terminal.
+
 ## 2. Running the program
 
 Run every command from the project folder, using the virtual environment's Python (`.\.venv\Scripts\python`).
